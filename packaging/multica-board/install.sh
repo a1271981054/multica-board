@@ -18,7 +18,7 @@ else
     USER_HOME="$HOME"
   fi
   BOARD_HOME="${MULTICA_BOARD_HOME:-$USER_HOME/Library/Application Support/${BOARD_APP_NAME}}"
-  BOARD_REPO="${MULTICA_BOARD_REPO:-multica-ai/multica-board}"
+  BOARD_REPO="${MULTICA_BOARD_REPO:-a1271981054/multica-board}"
   BOARD_RELEASE_BASE="${MULTICA_BOARD_RELEASE_BASE:-https://github.com/${BOARD_REPO}/releases/latest/download}"
 fi
 

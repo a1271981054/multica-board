@@ -13,7 +13,7 @@ BOARD_VERSION_FILE="$BOARD_INSTALL_DIR/VERSION"
 BOARD_TEMPLATES_DIR="${BOARD_TEMPLATES_DIR:-$BOARD_INSTALL_DIR/templates}"
 BOARD_PG_DATA="$BOARD_HOME/pgdata"
 BOARD_PG_SOCKET="$BOARD_HOME/pgsocket"
-BOARD_REPO="${MULTICA_BOARD_REPO:-multica-ai/multica-board}"
+BOARD_REPO="${MULTICA_BOARD_REPO:-a1271981054/multica-board}"
 BOARD_RELEASE_BASE="${MULTICA_BOARD_RELEASE_BASE:-https://github.com/${BOARD_REPO}/releases/latest/download}"
 
 BOARD_LABELS=("com.multica-board.backend" "com.multica-board.web" "com.multica-board.daemon")

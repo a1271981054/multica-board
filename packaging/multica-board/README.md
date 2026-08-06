@@ -9,7 +9,7 @@ Codex sidebar.
 Prerequisite: macOS with Codex installed (ChatGPT.app or Codex.app).
 
 ```bash
-curl -fsSL https://github.com/<owner>/multica-board/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/a1271981054/multica-board/releases/latest/download/install.sh | sudo bash
 ```
 
 For a local build:
