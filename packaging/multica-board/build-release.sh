@@ -4,7 +4,13 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGING="$REPO_ROOT/packaging/multica-board"
 VERSION="$(cat "$PACKAGING/VERSION")"
-ARCH="$(uname -m)"
+ARCH="${MULTICA_BOARD_ARCH:-$(uname -m)}"
+case "$ARCH" in
+  arm64) GOARCH=arm64 ;;
+  x86_64) GOARCH=amd64 ;;
+  *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+export GOOS=darwin GOARCH="$GOARCH"
 OUT="${MULTICA_BOARD_OUT_DIR:-$REPO_ROOT/dist}"
 BUNDLE="$(mktemp -d)"
 trap 'rm -rf "$BUNDLE"' EXIT

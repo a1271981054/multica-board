@@ -24,6 +24,7 @@ The installer:
 - installs to `/Applications/Multica Board.app`
 - downloads portable Node.js and PostgreSQL on first run
 - verifies the portable PostgreSQL bundle against `checksums.txt`
+- supports Apple Silicon (`arm64`) and Intel (`x86_64`) macOS bundles
 - creates `~/Library/Application Support/Multica Board` for data/logs
 - creates a local admin + workspace + daemon token automatically
 - starts backend / web / daemon with user LaunchAgents
@@ -59,6 +60,8 @@ Override with `MULTICA_BOARD_BACKEND_PORT`, `MULTICA_BOARD_WEB_PORT`,
 The first run downloads `postgresql-17.10-macos-<arch>.tar.gz` from the latest
 GitHub release, verifies its SHA-256 against `checksums.txt`, and unpacks
 PostgreSQL 17.10 with the `pgvector` extension into the user data directory.
+Both `arm64` and `x86_64` bundles are published; the installer picks the one
+matching the machine.
 To pin a custom mirror use `MULTICA_BOARD_POSTGRES_URL`, or pin a checksum with
 `MULTICA_BOARD_POSTGRES_SHA256`. A mirror that also hosts `checksums.txt` can
 point at it with `MULTICA_BOARD_CHECKSUMS_URL`. If the download is unavailable,
