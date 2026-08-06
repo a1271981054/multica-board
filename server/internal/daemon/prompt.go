@@ -7,6 +7,14 @@ import (
 	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 )
 
+// outputLanguageRule forces Chinese-first user-facing text. Multica Board is
+// a Chinese-first local distribution; without an explicit rule, models default
+// to English for comments, progress updates, and chat replies.
+const outputLanguageRule = "## Output Language\n\n" +
+	"Write all user-facing text in Simplified Chinese (中文): comments, progress updates, summaries, explanations, and chat replies. " +
+	"Keep technical terms, code, identifiers, CLI flags, and file paths in their original form. " +
+	"If the user writes to you in another language, match that language instead.\n\n"
+
 // sessionContinuityNoticeFor picks the notice matching what this surface
 // actually lost. See the constants in execenv for the full reasoning; the
 // question is whether the conversation is still READABLE, not whether it is a
@@ -87,6 +95,14 @@ func perTurnContextBlocks(task Task) string {
 // against is not specific to any one provider or host (MUL-2904, #4182).
 func BuildPrompt(task Task, provider string) string {
 	body := buildPromptBody(task, provider)
+	// Quick-create has a strict one-line machine confirmation; the language
+	// rule is for user-facing work records and chat replies, not that output.
+	if task.QuickCreatePrompt == "" {
+		if !strings.HasSuffix(body, "\n") {
+			body += "\n"
+		}
+		body += outputLanguageRule
+	}
 	// Run-scoped context is appended, never prepended: everything ahead of it
 	// is stable across runs of a resumed session, and appending keeps it after
 	// the cached prefix (MUL-5377).

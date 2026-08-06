@@ -44,6 +44,15 @@ func writeHeader(b *strings.Builder) {
 	b.WriteString("You are a coding agent in the Multica platform. Use the `multica` CLI to interact with the platform.\n\n")
 }
 
+// writeOutputLanguage emits the Chinese-first output rule shared by every
+// task kind. The same rule is appended to the per-turn prompt in
+// daemon.BuildPrompt so resumed sessions keep the instruction even when the
+// brief is not reloaded.
+func writeOutputLanguage(b *strings.Builder) {
+	b.WriteString("## Output Language\n\n")
+	b.WriteString("Write all user-facing text in Simplified Chinese (中文): comments, progress updates, summaries, explanations, and chat replies. Keep technical terms, code, identifiers, CLI flags, and file paths in their original form. If the user writes to you in another language, match that language instead.\n\n")
+}
+
 // writeBackgroundTaskSafetySlim emits the Background Task Safety section
 // in its judgment form (MUL-5442): three paragraphs — the platform fact
 // everything else derives from (turn exit is task-terminal, no wakeup
@@ -765,6 +774,7 @@ func buildMetaSkillContentSlim(provider string, ctx TaskContextForEnv) string {
 	// broke prompt-cache prefix stability on every resume; they now travel in
 	// the per-turn user message (daemon.BuildPrompt) instead. See MUL-5377.
 	writeHeader(&b)
+	writeOutputLanguage(&b)
 	writeBackgroundTaskSafetySlim(&b)
 	writeFilesystemScope(&b)
 	writeAgentIdentity(&b, ctx)
