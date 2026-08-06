@@ -5,8 +5,8 @@
 #   curl -fsSL https://github.com/<owner>/multica-board/releases/latest/download/install.sh | sudo bash
 #   sudo ./install.sh --source ./multica-board-macos-arm64.tar.gz
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "$SCRIPT_DIR/lib/common.sh" ]]; then
+if [[ -n "${BASH_SOURCE[0]:-}" && -f "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   # shellcheck disable=SC1091
   source "$SCRIPT_DIR/lib/common.sh"
 else
@@ -20,6 +20,23 @@ else
   BOARD_HOME="${MULTICA_BOARD_HOME:-$USER_HOME/Library/Application Support/${BOARD_APP_NAME}}"
   BOARD_REPO="${MULTICA_BOARD_REPO:-a1271981054/multica-board}"
   BOARD_RELEASE_BASE="${MULTICA_BOARD_RELEASE_BASE:-https://github.com/${BOARD_REPO}/releases/latest/download}"
+fi
+
+if ! declare -F board_os_check >/dev/null 2>&1; then
+  board_info() { printf '==> %s\n' "$*"; }
+  board_ok()   { printf '✓ %s\n' "$*"; }
+  board_warn() { printf '⚠ %s\n' "$*" >&2; }
+  board_fail() { printf '✗ %s\n' "$*" >&2; exit 1; }
+  board_os_check() {
+    [[ "$(uname -s)" == "Darwin" ]] || board_fail "Multica Board installer currently supports macOS only."
+  }
+  board_arch() {
+    case "$(uname -m)" in
+      x86_64) echo "x86_64" ;;
+      arm64) echo "arm64" ;;
+      *) board_fail "Unsupported architecture: $(uname -m)" ;;
+    esac
+  }
 fi
 
 SOURCE="${MULTICA_BOARD_SOURCE:-}"
