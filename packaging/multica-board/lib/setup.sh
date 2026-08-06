@@ -32,25 +32,45 @@ setup_runtime_postgres() {
     board_info "PostgreSQL found: $pg"
     return
   fi
-  if [[ -n "${MULTICA_BOARD_POSTGRES_URL:-}" ]]; then
-    local dest="$BOARD_RUNTIME/postgres" tmp
-    board_info "Downloading portable PostgreSQL from ${MULTICA_BOARD_POSTGRES_URL}"
-    tmp="$(mktemp -d)"
-    curl -fsSL "$MULTICA_BOARD_POSTGRES_URL" -o "$tmp/postgres.tar.gz"
-    mkdir -p "$dest"
-    tar -xzf "$tmp/postgres.tar.gz" -C "$dest" --strip-components=1
-    rm -rf "$tmp"
-    return
+  local arch asset url checksums_url dest tmp expected actual brew_pg
+  arch="$(board_arch)"
+  asset="postgresql-17.10-macos-${arch}.tar.gz"
+  url="${MULTICA_BOARD_POSTGRES_URL:-https://github.com/${BOARD_REPO}/releases/latest/download/${asset}}"
+  checksums_url="${MULTICA_BOARD_CHECKSUMS_URL:-https://github.com/${BOARD_REPO}/releases/latest/download/checksums.txt}"
+  dest="$BOARD_RUNTIME/postgres"
+  tmp="$(mktemp -d)"
+  board_info "Downloading portable PostgreSQL 17.10 + pgvector from $url"
+  if ! curl -fsSL "$url" -o "$tmp/postgres.tar.gz"; then
+    board_warn "Portable PostgreSQL download failed; falling back to Homebrew."
+    for candidate in postgresql@17 postgresql@16 postgresql; do
+      brew_pg="$(brew --prefix "$candidate" 2>/dev/null || true)"
+      if [[ -n "$brew_pg" && -x "$brew_pg/bin/pg_ctl" ]]; then
+        board_warn "Using Homebrew $candidate at $brew_pg"
+        return
+      fi
+    done
+    board_fail "Portable PostgreSQL download failed and no Homebrew PostgreSQL was found."
   fi
-  local brew_pg
-  for candidate in postgresql@17 postgresql@16 postgresql; do
-    brew_pg="$(brew --prefix "$candidate" 2>/dev/null || true)"
-    if [[ -n "$brew_pg" && -x "$brew_pg/bin/pg_ctl" ]]; then
-      board_warn "Portable PostgreSQL not available yet; using Homebrew $candidate at $brew_pg"
-      return
+  expected="${MULTICA_BOARD_POSTGRES_SHA256:-}"
+  if [[ -z "$expected" ]] && curl -fsSL "$checksums_url" -o "$tmp/checksums.txt" 2>/dev/null; then
+    expected="$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/checksums.txt" | head -1 || true)"
+  fi
+  if [[ -n "$expected" ]]; then
+    actual="$(shasum -a 256 "$tmp/postgres.tar.gz" | awk '{print $1}')"
+    if [[ "$actual" != "$expected" ]]; then
+      board_fail "Portable PostgreSQL checksum mismatch (expected $expected, got $actual)."
     fi
-  done
-  board_fail "No PostgreSQL found. Publish a portable pgvector PostgreSQL 17 asset and set MULTICA_BOARD_POSTGRES_URL, or install PostgreSQL via Homebrew."
+    board_ok "PostgreSQL checksum verified"
+  else
+    board_warn "No checksum entry found for $asset; skipping verification."
+  fi
+  mkdir -p "$dest"
+  tar -xzf "$tmp/postgres.tar.gz" -C "$dest" --strip-components=1
+  rm -rf "$tmp"
+  if [[ ! -x "$dest/bin/postgres" || ! -f "$dest/share/postgresql/extension/vector.control" ]]; then
+    board_fail "Portable PostgreSQL bundle is incomplete (missing postgres binary or pgvector extension)."
+  fi
+  board_ok "Portable PostgreSQL 17.10 + pgvector installed at $dest"
 }
 
 setup_postgres() {
@@ -78,11 +98,18 @@ setup_postgres() {
   if ! "$pg_ctl" -D "$BOARD_PG_DATA" status >/dev/null 2>&1; then
     board_info "Starting PostgreSQL on 127.0.0.1:${MULTICA_BOARD_PG_PORT}"
     "$pg_ctl" -D "$BOARD_PG_DATA" -l "$BOARD_LOGS/postgres.log" \
-      -o "-p ${MULTICA_BOARD_PG_PORT} -k ${BOARD_PG_SOCKET} -h 127.0.0.1" start >/dev/null
+      -o "-p ${MULTICA_BOARD_PG_PORT} -k '${BOARD_PG_SOCKET}' -h 127.0.0.1" start >/dev/null
   fi
 
   if ! "$psql" -h 127.0.0.1 -p "$MULTICA_BOARD_PG_PORT" -U "$MULTICA_BOARD_PG_USER" -lqt 2>/dev/null | cut -d'|' -f1 | grep -qw "$MULTICA_BOARD_PG_DB"; then
     "$createdb" -h 127.0.0.1 -p "$MULTICA_BOARD_PG_PORT" -U "$MULTICA_BOARD_PG_USER" "$MULTICA_BOARD_PG_DB"
+  fi
+
+  if "$psql" -h 127.0.0.1 -p "$MULTICA_BOARD_PG_PORT" -U "$MULTICA_BOARD_PG_USER" -d "$MULTICA_BOARD_PG_DB" \
+    -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector' >/dev/null 2>&1; then
+    board_info "pgvector extension ready"
+  else
+    board_warn "pgvector extension unavailable; embedding features will be limited."
   fi
 }
 

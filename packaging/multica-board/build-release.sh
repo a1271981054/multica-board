@@ -48,6 +48,10 @@ exec node "$DIR/../@electron/asar/bin/asar.js" "$@"
 WRAPPER
 chmod +x "$BUNDLE/patch/node_modules/.bin/asar"
 
+board_info "Bundling SQL migrations"
+mkdir -p "$BUNDLE/migrations"
+cp "$REPO_ROOT/server/migrations/"*.sql "$BUNDLE/migrations/"
+
 cp "$PACKAGING/VERSION" "$BUNDLE/VERSION"
 cp "$REPO_ROOT/LICENSE" "$BUNDLE/LICENSE"
 cp "$REPO_ROOT/NOTICE" "$BUNDLE/NOTICE"
