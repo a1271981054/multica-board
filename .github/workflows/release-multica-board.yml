@@ -1,0 +1,46 @@
+name: Release Multica Board
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "multica-board-v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            arch: arm64
+          - os: macos-13
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.28.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+      - run: pnpm install --frozen-lockfile
+      - run: MULTICA_BOARD_OUT_DIR="${{ github.workspace }}/dist" ./packaging/multica-board/build-release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: multica-board-macos-${{ matrix.arch }}
+          path: |
+            dist/multica-board-macos-${{ matrix.arch }}.tar.gz
+            dist/checksums.txt
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/multica-board-macos-${{ matrix.arch }}.tar.gz
+            dist/checksums.txt

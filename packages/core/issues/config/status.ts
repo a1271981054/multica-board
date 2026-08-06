@@ -1,0 +1,43 @@
+import type { IssueStatus } from "../../types";
+
+export const STATUS_ORDER: IssueStatus[] = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "in_review",
+  "needs_input",
+  "done",
+  "blocked",
+  "cancelled",
+];
+
+export const ALL_STATUSES: IssueStatus[] = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "in_review",
+  "needs_input",
+  "done",
+  "blocked",
+  "cancelled",
+];
+
+export const STATUS_CONFIG: Record<
+  IssueStatus,
+  {
+    label: string;
+    iconColor: string;
+    hoverBg: string;
+    dividerColor: string;
+    columnBg: string;
+  }
+> = {
+  backlog: { label: "暂缓", iconColor: "text-muted-foreground", hoverBg: "hover:bg-accent", dividerColor: "bg-muted-foreground/40", columnBg: "bg-muted/40" },
+  todo: { label: "待办", iconColor: "text-muted-foreground", hoverBg: "hover:bg-accent", dividerColor: "bg-muted-foreground/40", columnBg: "bg-muted/40" },
+  in_progress: { label: "进行中", iconColor: "text-warning", hoverBg: "hover:bg-warning/10", dividerColor: "bg-warning", columnBg: "bg-warning/5" },
+  in_review: { label: "待审核", iconColor: "text-success", hoverBg: "hover:bg-success/10", dividerColor: "bg-success", columnBg: "bg-success/5" },
+  needs_input: { label: "待回复", iconColor: "text-warning", hoverBg: "hover:bg-warning/10", dividerColor: "bg-warning", columnBg: "bg-warning/5" },
+  done: { label: "已完成", iconColor: "text-info", hoverBg: "hover:bg-info/10", dividerColor: "bg-info", columnBg: "bg-info/5" },
+  blocked: { label: "阻塞", iconColor: "text-destructive", hoverBg: "hover:bg-destructive/10", dividerColor: "bg-destructive", columnBg: "bg-destructive/5" },
+  cancelled: { label: "已取消", iconColor: "text-muted-foreground", hoverBg: "hover:bg-accent", dividerColor: "bg-muted-foreground/40", columnBg: "bg-muted/40" },
+};

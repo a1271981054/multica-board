@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib/common.sh"
+
+cmd_help() {
+  cat <<HELP
+Multica Board control command.
+
+Usage: multica-board <command>
+
+Commands:
+  setup       Generate config, initialize PostgreSQL, start services, bootstrap local account
+  start       Start backend / web / daemon LaunchAgents
+  stop        Stop all LaunchAgents
+  status      Show service status
+  patch       Patch Codex sidebar (auto-detect app, backup, rollback via patch --undo)
+  update      Check GitHub releases and update to the latest version
+  uninstall   Stop services, remove LaunchAgents, remove /Applications app and data
+HELP
+}
+
+cmd_patch() {
+  board_load_config
+  local web_url="http://127.0.0.1:${MULTICA_BOARD_WEB_PORT:-13000}"
+  local node
+  node="$(board_detect_node)"
+  if [[ -n "$node" ]]; then
+    PATH="$(dirname "$node"):$PATH" node "$SCRIPT_DIR/patch/patch-codex.mjs" --web-url "$web_url" --home "$BOARD_HOME" "$@"
+  else
+    node "$SCRIPT_DIR/patch/patch-codex.mjs" --web-url "$web_url" --home "$BOARD_HOME" "$@"
+  fi
+}
+
+cmd_update() {
+  local current latest
+  current="$(cat "$BOARD_VERSION_FILE" 2>/dev/null || echo 0.0.0)"
+  latest="$(curl -fsSL "https://api.github.com/repos/${BOARD_REPO}/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))' 2>/dev/null || echo "")"
+  if [[ -z "$latest" ]]; then
+    board_fail "Could not check latest release."
+  fi
+  if [[ "$current" == "$latest" ]]; then
+    board_ok "Already up to date ($current)."
+    return
+  fi
+  board_info "New version available: $latest (current $current)."
+  board_info "Run: curl -fsSL ${BOARD_RELEASE_BASE}/install.sh | sudo bash"
+}
+
+cmd_uninstall() {
+  board_stop
+  rm -f "$HOME/Library/LaunchAgents/com.multica-board."*.plist
+  if [[ -d "/Applications/${BOARD_APP_NAME}.app" ]]; then
+    board_info "Removing /Applications/${BOARD_APP_NAME}.app (requires sudo)"
+    sudo rm -rf "/Applications/${BOARD_APP_NAME}.app" /usr/local/bin/multica-board
+  fi
+  if [[ -d "$BOARD_HOME" ]]; then
+    board_info "Removing data directory $BOARD_HOME"
+    rm -rf "$BOARD_HOME"
+  fi
+  board_ok "Uninstalled."
+}
+
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+  setup) source "$SCRIPT_DIR/lib/setup.sh"; cmd_setup ;;
+  start) board_start ;;
+  stop) board_stop ;;
+  status) board_status ;;
+  patch) cmd_patch "$@" ;;
+  update) cmd_update ;;
+  uninstall) cmd_uninstall ;;
+  help|--help|-h) cmd_help ;;
+  *) board_fail "Unknown command: $cmd" ;;
+esac
