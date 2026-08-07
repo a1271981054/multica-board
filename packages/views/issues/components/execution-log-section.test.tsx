@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentTask } from "@multica/core/types";
 import { renderWithI18n } from "../../test/i18n";
@@ -111,6 +111,31 @@ describe("ActiveTaskRow", () => {
       'button[aria-label="在 Codex 中打开会话"]',
     );
     expect(button).not.toBeNull();
+  });
+
+  it("uses the host bridge when available instead of navigating the webview", () => {
+    const openCodexThread = vi.fn().mockResolvedValue(true);
+    (window as unknown as { multicaBoard?: { openCodexThread: (id: string) => Promise<unknown> } }).multicaBoard = {
+      openCodexThread,
+    };
+
+    const { container } = renderWithI18n(
+      <ActiveTaskRow
+        task={makeTask({ session_id: "019fd761-486d-7473-8393-52fbb8973259" })}
+        issueId="issue-1"
+      />,
+    );
+    const button = container.querySelector(
+      'button[aria-label="在 Codex 中打开会话"]',
+    );
+    expect(button).not.toBeNull();
+    fireEvent.click(button!);
+
+    expect(openCodexThread).toHaveBeenCalledWith(
+      "019fd761-486d-7473-8393-52fbb8973259",
+    );
+    delete (window as unknown as { multicaBoard?: { openCodexThread: (id: string) => Promise<unknown> } })
+      .multicaBoard;
   });
 });
 

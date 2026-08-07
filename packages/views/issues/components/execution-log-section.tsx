@@ -504,14 +504,22 @@ function PastRow({ task, issueId }: { task: AgentTask; issueId: string }) {
 }
 
 function CodexSessionLink({ sessionId }: { sessionId: string }) {
+  const copyDeepLink = () => {
+    const url = `codex://threads/${sessionId}`;
+    void navigator.clipboard?.writeText(url).catch(() => undefined);
+    toast.info("请先升级 Multica Board 并重启 Codex；链接已复制");
+  };
+
   const openInCodex = () => {
     const bridge = (window as unknown as { multicaBoard?: { openCodexThread?: (id: string) => Promise<unknown> } })
       .multicaBoard;
     if (bridge?.openCodexThread) {
-      void bridge.openCodexThread(sessionId);
+      void bridge.openCodexThread(sessionId).then((ok) => {
+        if (!ok) copyDeepLink();
+      });
       return;
     }
-    window.location.href = `codex://threads/${sessionId}`;
+    copyDeepLink();
   };
 
   return (
