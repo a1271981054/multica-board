@@ -1,6 +1,7 @@
 "use client";
 
-import { Brain, Cpu } from "lucide-react";
+import { useState } from "react";
+import { Brain, Cpu, Plus } from "lucide-react";
 import { cn } from "@multica/ui/lib/utils";
 import { ModelPicker } from "../../agents/components/inspector/model-picker";
 import { ThinkingPicker } from "../../agents/components/inspector/thinking-picker";
@@ -15,6 +16,24 @@ export function RunOverridePickers({
 }) {
   if (!overrides.enabled) return null;
   const levels = overrides.activeModel?.thinking?.supported_levels ?? [];
+  const hasSelection = Boolean(overrides.model || overrides.thinkingLevel);
+  const [revealed, setRevealed] = useState(false);
+
+  if (!hasSelection && !revealed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setRevealed(true)}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/60 px-2 py-1 text-caption text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground",
+          className,
+        )}
+      >
+        <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+        模型/推理
+      </button>
+    );
+  }
 
   return (
     <div className={cn("flex items-center gap-1.5", className)}>

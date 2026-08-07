@@ -12,6 +12,7 @@ import {
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  Plus,
   Settings2,
   X as XIcon,
 } from "lucide-react";
@@ -300,6 +301,7 @@ export function AgentCreatePanel({
   const [fieldPickerOpen, setFieldPickerOpen] = useState<QuickCreateField | null>(null);
   const [modelOverride, setModelOverride] = useState(draft.agent.model ?? "");
   const [thinkingOverride, setThinkingOverride] = useState(draft.agent.thinkingLevel ?? "");
+  const [showRunOverrides, setShowRunOverrides] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState("");
   const slashPopupRef = useRef<HTMLDivElement>(null);
@@ -714,6 +716,7 @@ export function AgentCreatePanel({
             selectedSquad={selectedSquad}
             onPick={(next) => {
               setActor(next);
+              setShowRunOverrides(false);
               setModelOverride("");
               setThinkingOverride("");
               setAgent({
@@ -834,7 +837,17 @@ export function AgentCreatePanel({
             it non-editable: changing the parent is a `Set parent` action on
             the parent itself, not a knob in the quick-create flow. */}
         <div className="flex items-center gap-1.5 px-4 pb-2 shrink-0 flex-wrap">
-          {selectedAgent && (
+          {selectedAgent && !modelOverride && !thinkingOverride && !showRunOverrides && (
+            <button
+              type="button"
+              onClick={() => setShowRunOverrides(true)}
+              className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/60 px-2 py-1 text-caption text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+            >
+              <Plus className="size-3.5 shrink-0" aria-hidden="true" />
+              模型/推理
+            </button>
+          )}
+          {selectedAgent && (modelOverride || thinkingOverride || showRunOverrides) && (
             <span className="flex items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 py-1 text-caption text-muted-foreground">
               <Cpu className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="shrink-0">模型</span>
@@ -853,7 +866,7 @@ export function AgentCreatePanel({
               />
             </span>
           )}
-          {selectedAgent && (
+          {selectedAgent && (modelOverride || thinkingOverride || showRunOverrides) && (
             <span className="flex items-center gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 py-1 text-caption text-muted-foreground">
               <Brain className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="shrink-0">推理</span>
