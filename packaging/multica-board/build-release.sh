@@ -4,6 +4,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGING="$REPO_ROOT/packaging/multica-board"
 VERSION="$(cat "$PACKAGING/VERSION")"
+# The bundled `multica` CLI must report a version new enough for the
+# quick-create feature gates (server/pkg/agent/version.go). The Board package
+# version is intentionally separate: it tracks the app distribution, not the
+# CLI protocol floor.
+CLI_VERSION="${MULTICA_CLI_VERSION:-0.4.19}"
 ARCH="${MULTICA_BOARD_ARCH:-$(uname -m)}"
 case "$ARCH" in
   arm64) GOARCH=arm64 ;;
@@ -20,7 +25,7 @@ board_info() { printf '==> %s\n' "$*"; }
 board_info "Building backend + daemon + migrate"
 cd "$REPO_ROOT/server"
 go build -ldflags "-s -w -X main.version=${VERSION}" -o "$BUNDLE/bin/server" ./cmd/server
-go build -ldflags "-s -w -X main.version=${VERSION}" -o "$BUNDLE/bin/multica" ./cmd/multica
+go build -ldflags "-s -w -X main.version=${CLI_VERSION}" -o "$BUNDLE/bin/multica" ./cmd/multica
 go build -ldflags "-s -w" -o "$BUNDLE/bin/migrate" ./cmd/migrate
 
 board_info "Building Next.js standalone web"
