@@ -45,6 +45,7 @@ import { useCurrentWorkspace, useWorkspacePaths } from "@multica/core/paths";
 import { useNavigation } from "../navigation";
 import { agentListOptions, squadListOptions, skillListOptions } from "@multica/core/workspace/queries";
 import { projectListOptions } from "@multica/core/projects/queries";
+import { projectResourcesOptions } from "@multica/core/projects";
 import {
   useQuickCreateStore,
   type QuickCreateActorType,
@@ -287,6 +288,13 @@ export function AgentCreatePanel({
       lastProjectId;
     return seed ?? null;
   });
+  const { data: projectResources = [] } = useQuery({
+    ...projectResourcesOptions(wsId, projectId ?? ""),
+    enabled: Boolean(projectId),
+  });
+  const hasLocalDirectoryResource = projectResources.some(
+    (r) => r.resource_type === "local_directory",
+  );
   const [priority, setPriority] = useState<IssuePriority>(
     (data?.priority as IssuePriority | undefined) ?? draft.shared.priority,
   );
@@ -724,6 +732,12 @@ export function AgentCreatePanel({
                   current: versionCheck.current,
                   min: versionCheck.min,
                 })}
+          </div>
+        )}
+
+        {hasLocalDirectoryResource && (
+          <div className="mx-5 mb-2 shrink-0 rounded-md border border-info/30 bg-info/5 px-3 py-2 text-caption text-info">
+            该项目绑定本地目录，同一目录同时只能运行一个任务
           </div>
         )}
 

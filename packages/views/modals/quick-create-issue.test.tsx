@@ -77,6 +77,14 @@ const mockProjectsQuery = vi.hoisted(() => ({
   isSuccess: true,
 }));
 
+const mockProjectResources = vi.hoisted(() => ({
+  data: [] as Array<{
+    id: string;
+    resource_type: string;
+    resource_ref: Record<string, unknown>;
+  }>,
+}));
+
 // Per-test override for the squads list so we can flip between "squads
 // exist and one's leader is reachable" and "no squads" cases without
 // re-mocking the whole module.
@@ -90,6 +98,7 @@ const mockSquadsData = vi.hoisted(
 let mockUploadIdSeq = 0;
 
 vi.mock("@tanstack/react-query", () => ({
+  queryOptions: (opts: any) => opts,
   useQuery: ({ queryKey }: { queryKey: string[] }) => {
     // Workspace-scoped query keys carry the wsId as `queryKey[1]`; the
     // discriminator is at `queryKey[2]` (e.g. ["workspaces", wsId, "squads"]).
@@ -106,6 +115,9 @@ vi.mock("@tanstack/react-query", () => ({
       case "runtimes":
         return { data: [{ id: "runtime-1", metadata: { cli_version: "1.2.3" } }] };
       case "projects":
+        if (queryKey[4] === "resources") {
+          return { data: mockProjectResources.data };
+        }
         return mockProjectsQuery;
       default:
         return { data: [] };
@@ -149,6 +161,9 @@ vi.mock("@multica/core/workspace/queries", () => ({
 
 vi.mock("@multica/core/projects/queries", () => ({
   projectListOptions: () => ({ queryKey: ["projects"] }),
+  projectKeys: {
+    detail: (wsId: string, id: string) => ["projects", wsId, "detail", id],
+  },
 }));
 
 vi.mock("@multica/core/issues/stores/quick-create-store", () => ({
@@ -451,6 +466,7 @@ describe("AgentCreatePanel", () => {
     });
     mockProjectsQuery.data = [];
     mockProjectsQuery.isSuccess = true;
+    mockProjectResources.data = [];
     mockSquadsData.list = [];
     mockQuickCreateIssue.mockResolvedValue(undefined);
     mockApiUploadFile.mockResolvedValue({
@@ -502,6 +518,31 @@ describe("AgentCreatePanel", () => {
     expect((textarea as HTMLTextAreaElement).value).toContain(
       "[/目标](slash://skill/mode:目标)",
     );
+  });
+
+  it("warns when the selected project binds a local directory", () => {
+    mockProjectResources.data = [
+      {
+        id: "res-1",
+        resource_type: "local_directory",
+        resource_ref: {
+          local_path: "/Users/test/project",
+          daemon_id: "codex-local",
+          label: "/Users/test/project",
+        },
+      },
+    ];
+
+    renderPanel({
+      onClose: vi.fn(),
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: "proj-1" },
+    });
+
+    expect(
+      screen.getByText("该项目绑定本地目录，同一目录同时只能运行一个任务"),
+    ).toBeInTheDocument();
   });
 
   it("restores unfinished actor, project, priority, and due-date selections after remount", async () => {
