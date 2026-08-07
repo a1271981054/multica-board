@@ -2770,6 +2770,37 @@ func (h *Handler) ResolveTaskSkillBundles(w http.ResponseWriter, r *http.Request
 			return
 		}
 		bundle, ok := allowed[ref.Source+"\x00"+ref.ID]
+		if !ok && ref.Source == "workspace" {
+			// Skills selected via the board's / menu are workspace skills, not
+			// necessarily assigned to this agent. Resolve them directly so the
+			// daemon can hydrate them for this run.
+			skill, err := h.Queries.GetSkillInWorkspace(r.Context(), db.GetSkillInWorkspaceParams{
+				ID:          parseUUID(ref.ID),
+				WorkspaceID: parseUUID(taskWorkspaceID),
+			})
+			if err == nil {
+				files, listErr := h.Queries.ListSkillFiles(r.Context(), skill.ID)
+				if listErr == nil {
+					data := service.AgentSkillData{
+						ID:          uuidToString(skill.ID),
+						Source:      "workspace",
+						Name:        skill.Name,
+						Description: skill.Description,
+						Content:     skill.Content,
+					}
+					for _, f := range files {
+						data.Files = append(data.Files, service.AgentSkillFileData{
+							Path:    f.Path,
+							Content: f.Content,
+						})
+					}
+					if built, buildErr := service.BuildAgentSkillBundles([]service.AgentSkillData{data}); buildErr == nil && len(built) > 0 {
+						allowed[built[0].Source+"\x00"+built[0].ID] = built[0]
+						bundle, ok = built[0], true
+					}
+				}
+			}
+		}
 		if !ok {
 			writeError(w, http.StatusNotFound, "skill bundle not found")
 			return

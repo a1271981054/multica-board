@@ -5593,6 +5593,21 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	stopPrepareLease := d.startTaskPrepareLeaseExtender(prepareCtx, task, taskLog)
 	defer stopPrepareLease()
 
+	selectedModes, selectedSkills := collectSelectedTools(task)
+	if task.Agent != nil && len(selectedSkills) > 0 {
+		seen := make(map[string]struct{}, len(task.Agent.SkillRefs))
+		for _, ref := range task.Agent.SkillRefs {
+			seen[ref.ID] = struct{}{}
+		}
+		for _, ref := range skillRefsForSelected(selectedSkills) {
+			if _, ok := seen[ref.ID]; ok {
+				continue
+			}
+			seen[ref.ID] = struct{}{}
+			task.Agent.SkillRefs = append(task.Agent.SkillRefs, ref)
+		}
+	}
+
 	if err := d.ensureTaskSkillBundles(prepareCtx, &task); err != nil {
 		return TaskResult{}, err
 	}
@@ -5653,6 +5668,12 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		InitiatorEmail:                   task.InitiatorEmail,
 		WorkspaceContext:                 task.WorkspaceContext,
 		ConnectedApps:                    task.ConnectedApps,
+	}
+	if modeBrief := activeModesBrief(selectedModes); modeBrief != "" {
+		if taskCtx.WorkspaceContext != "" {
+			taskCtx.WorkspaceContext += "\n\n"
+		}
+		taskCtx.WorkspaceContext += modeBrief
 	}
 
 	// Mark candidate env roots as active before any env work so the GC loop
