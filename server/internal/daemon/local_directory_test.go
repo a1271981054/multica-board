@@ -785,3 +785,18 @@ func TestAcquireLocalDirectoryLock_EarlyFailureReportsWithCancelledParent(t *tes
 		t.Fatalf("fail callback calls = %d, want %d", got, len(tests))
 	}
 }
+
+func TestAllowParallelLocalDirectory(t *testing.T) {
+	t.Setenv(AllowParallelLocalDirectoryEnv, "true")
+	if !allowParallelLocalDirectory() {
+		t.Fatal("expected parallel local directory switch to be enabled")
+	}
+	t.Setenv(AllowParallelLocalDirectoryEnv, "false")
+	if allowParallelLocalDirectory() {
+		t.Fatal("expected parallel local directory switch to be disabled")
+	}
+	t.Setenv(AllowParallelLocalDirectoryEnv, "")
+	if allowParallelLocalDirectory() {
+		t.Fatal("expected unset parallel local directory switch to be disabled")
+	}
+}

@@ -19,6 +19,20 @@ import (
 // constant — keep in sync if the type string is ever renamed.
 const localDirectoryResourceType = "local_directory"
 
+// AllowParallelLocalDirectoryEnv opts into running multiple tasks against the
+// same local_directory at the same time. This is unsafe for editors that
+// share one working tree (agents can overwrite each other), so it defaults
+// off; the switch exists for users who understand and accept that risk.
+const AllowParallelLocalDirectoryEnv = "MULTICA_BOARD_ALLOW_PARALLEL_LOCAL_DIRECTORY"
+
+func allowParallelLocalDirectory() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(AllowParallelLocalDirectoryEnv))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
 // localDirectoryRef mirrors the server-side ref shape for local_directory
 // project resources. Defined locally so the daemon does not have to import
 // the server handler package.

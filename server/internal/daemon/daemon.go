@@ -4807,6 +4807,12 @@ func (d *Daemon) acquireLocalDirectoryLockIfNeeded(ctx context.Context, task Tas
 		}
 		return nil, true
 	}
+	if allowParallelLocalDirectory() {
+		taskLog.Warn("local_directory: parallel same-directory execution enabled; skipping path lock",
+			"env", AllowParallelLocalDirectoryEnv,
+		)
+		return nil, false
+	}
 
 	// While the lock is contended the daemon would otherwise sit blocked on
 	// the path mutex with no signal back from the server — the main
