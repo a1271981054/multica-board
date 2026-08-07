@@ -742,6 +742,7 @@ export function AgentCreatePanel({
             ref={editorRef}
             defaultValue={initialPrompt}
             placeholder={t(($) => $.create_issue.agent.prompt_placeholder)}
+            enableSlashCommands={false}
             onUpdate={(md) => {
               setHasContent(md.trim().length > 0);
               setAgent({ prompt: md });

@@ -499,7 +499,7 @@
     "included_comments_other": "包含 {{count}} 条评论",
     "status_queued": "排队中",
     "status_dispatched": "启动中",
-    "status_waiting_local_directory": "等待本地目录释放",
+    "status_waiting_local_directory": "等待同一项目目录（同一目录同时只允许一个任务）",
     "status_running": "处理中",
     "status_completed": "已完成",
     "status_failed": "失败",

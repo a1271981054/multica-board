@@ -522,7 +522,7 @@
     "included_comments_other": "Includes {{count}} comments",
     "status_queued": "Queued",
     "status_dispatched": "Starting",
-    "status_waiting_local_directory": "Waiting for local directory",
+    "status_waiting_local_directory": "Waiting for project directory (one task per directory)",
     "status_running": "Working",
     "status_completed": "Completed",
     "status_failed": "Failed",
