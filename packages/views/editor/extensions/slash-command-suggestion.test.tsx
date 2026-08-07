@@ -45,6 +45,7 @@ import {
   buildBuiltinCommandItems,
   BUILTIN_COMMANDS,
   createBuiltinCommandSuggestion,
+  createUniversalCommandSuggestion,
   QUICK_ACTION_ITEM_PREFIX,
 } from "./slash-command-suggestion";
 
@@ -79,10 +80,12 @@ function agent(overrides: Partial<Agent>): Agent {
 function fakeQc(data: {
   members?: Array<Pick<MemberWithUser, "user_id" | "name" | "role">>;
   agents?: Agent[];
+  skills?: Array<{ id: string; name: string; description: string }>;
 }): QueryClient {
   const map = new Map<string, unknown>();
   map.set(JSON.stringify(workspaceKeys.members("ws-1")), data.members ?? []);
   map.set(JSON.stringify(workspaceKeys.agents("ws-1")), data.agents ?? []);
+  map.set(JSON.stringify(workspaceKeys.skills("ws-1")), data.skills ?? []);
   return {
     getQueryData: (key: readonly unknown[]) => map.get(JSON.stringify(key)),
   } as unknown as QueryClient;
@@ -95,6 +98,15 @@ function items(qc: QueryClient, query = ""): SlashCommandItem[] {
     editor: {} as never,
     signal: new AbortController().signal,
   }) as SlashCommandItem[];
+}
+
+async function universalItems(qc: QueryClient, query = ""): Promise<SlashCommandItem[]> {
+  const config = createUniversalCommandSuggestion(qc);
+  return (await config.items!({
+    query,
+    editor: {} as never,
+    signal: new AbortController().signal,
+  })) as SlashCommandItem[];
 }
 
 describe("slash command suggestion items", () => {
@@ -245,6 +257,28 @@ describe("slash command suggestion items", () => {
     });
 
     expect(items(qc)).toEqual([]);
+  });
+});
+
+describe("universal slash command suggestion", () => {
+  it("includes modes, workspace skills, and the built-in note command", async () => {
+    const qc = fakeQc({
+      skills: [{ id: "s1", name: "deploy", description: "Ship changes" }],
+    });
+
+    const list = await universalItems(qc);
+    const labels = list.map((item) => item.label);
+
+    expect(labels).toEqual(expect.arrayContaining(["目标", "计划模式", "deploy", "note"]));
+  });
+
+  it("filters across modes and skills by query", async () => {
+    const qc = fakeQc({
+      skills: [{ id: "s1", name: "deploy", description: "Ship changes" }],
+    });
+
+    const list = await universalItems(qc, "目");
+    expect(list.map((item) => item.label)).toEqual(["目标"]);
   });
 });
 

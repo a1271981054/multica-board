@@ -189,7 +189,7 @@ interface ContentEditorBaseProps {
    * lists the active agent's skills (chat); "command" shows the fixed built-in
    * command menu (issue comments), e.g. /note.
    */
-  slashCommandMode?: "skill" | "command";
+  slashCommandMode?: "skill" | "command" | "universal";
   /**
    * Quick actions to offer in the "command" `/` menu, plus the resolver that
    * turns a pick into the text it would post (MUL-5465). Read through

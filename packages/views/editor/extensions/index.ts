@@ -44,7 +44,11 @@ import {
   type IssueIdentifierResolver,
 } from "./issue-identifier-autolink";
 import { SlashCommandExtension } from "./slash-command-extension";
-import { createSlashCommandSuggestion, createBuiltinCommandSuggestion } from "./slash-command-suggestion";
+import {
+  createSlashCommandSuggestion,
+  createBuiltinCommandSuggestion,
+  createUniversalCommandSuggestion,
+} from "./slash-command-suggestion";
 import type { BuiltinCommandSuggestionOptions } from "./slash-command-suggestion";
 import { SuggestionTriggerArmingExtension } from "./suggestion-trigger-arming";
 import { CodeBlockView } from "./code-block-view";
@@ -173,7 +177,7 @@ export interface EditorExtensionsOptions {
    * - "skill" (default) — the chat picker listing the active agent's skills.
    * - "command" — the fixed built-in command menu (issue comments), e.g. /note.
    */
-  slashCommandMode?: "skill" | "command";
+  slashCommandMode?: "skill" | "command" | "universal";
   /**
    * Quick actions offered in the "command" `/` menu, plus the resolver that
    * turns a pick into the text it would post (MUL-5465). Both are functions so
@@ -275,6 +279,8 @@ export function createEditorExtensions(
       HTMLAttributes: { class: "slash-command" },
       suggestion: !options.enableSlashCommands
         ? { char: "/", allow: () => false }
+        : options.slashCommandMode === "universal" && options.queryClient
+          ? createUniversalCommandSuggestion(options.queryClient, options.quickActionMenu)
         : options.slashCommandMode === "command"
           ? createBuiltinCommandSuggestion(options.quickActionMenu)
           : options.queryClient

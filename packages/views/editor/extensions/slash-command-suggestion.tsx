@@ -17,7 +17,8 @@ import { getCurrentWsId } from "@multica/core/platform";
 import { canAssignAgentToIssue } from "@multica/core/permissions";
 import { isImeComposing } from "@multica/core/utils";
 import { workspaceKeys } from "@multica/core/workspace/queries";
-import type { Agent, MemberWithUser } from "@multica/core/types";
+import { skillListOptions } from "@multica/core/workspace/queries";
+import type { Agent, MemberWithUser, SkillSummary } from "@multica/core/types";
 import { useT } from "../../i18n";
 import {
   createSuggestionPopupRender,
@@ -27,6 +28,7 @@ import {
   pickerNavigationDirection,
 } from "../../common/picker-keys";
 import { isTriggerArmedAt } from "./suggestion-trigger-arming";
+import { SLASH_MODES } from "./slash-command-modes";
 
 const MAX_ITEMS = 20;
 
@@ -244,6 +246,146 @@ export function createSlashCommandSuggestion(qc: QueryClient): Omit<
         items: props.items,
         query: props.query,
         command: props.command,
+      }),
+      onKeyDown: (ref, props) => ref?.onKeyDown(props) ?? false,
+    }),
+  };
+}
+
+/**
+ * Universal `/` menu for replies and comments: modes, workspace skills
+ * (including plugin-backed skills), quick actions, and the built-in `/note`.
+ * Picked modes/skills are inserted as real slash-command nodes so they render
+ * as tags and serialize back into the comment/reply markdown.
+ */
+export function createUniversalCommandSuggestion(
+  qc: QueryClient,
+  options: BuiltinCommandSuggestionOptions = {},
+): Omit<SuggestionOptions<SlashCommandItem>, "editor"> {
+  const pluginKey = new PluginKey("universalCommandSuggestion");
+
+  return {
+    char: "/",
+    pluginKey,
+    shouldShow: ({ editor, range }) => isTriggerArmedAt(editor, range.from),
+    items: async ({ query }) => {
+      const wsId = getCurrentWsId();
+      const q = query.toLowerCase();
+
+      let skills: SkillSummary[] = wsId
+        ? (qc.getQueryData<SkillSummary[]>(workspaceKeys.skills(wsId)) ?? [])
+        : [];
+      if (wsId && skills.length === 0) {
+        try {
+          skills = (await qc.fetchQuery(skillListOptions(wsId))) ?? [];
+        } catch {
+          skills = [];
+        }
+      }
+
+      const modeItems = SLASH_MODES.filter(
+        (name) => !q || name.toLowerCase().includes(q),
+      ).map((name) => ({
+        id: `mode:${name}`,
+        label: name,
+        description: "模式",
+      }));
+
+      const skillItems = skills
+        .filter((skill) => !skill.name.startsWith(".") && !skill.name.endsWith(".disabled"))
+        .filter(
+          (skill) =>
+            !q ||
+            skill.name.toLowerCase().includes(q) ||
+            (skill.description ?? "").toLowerCase().includes(q),
+        )
+        .map((skill) => ({
+          id: skill.id,
+          label: skill.name,
+          description: skill.description,
+        }));
+
+      const quickActions = options.getQuickActions?.() ?? [];
+      const actionItems: SlashCommandItem[] = quickActions.map((a) => ({
+        id: `${QUICK_ACTION_ITEM_PREFIX}${a.id}`,
+        label: a.name,
+        description: a.description || undefined,
+      }));
+
+      return [...modeItems, ...skillItems, ...actionItems, ...BUILTIN_COMMANDS]
+        .filter(
+          (item) => !q || item.label.toLowerCase().includes(q),
+        )
+        .slice(0, MAX_ITEMS);
+    },
+    command: ({ editor, range, props }) => {
+      if (isQuickActionItem(props)) {
+        const render = options.renderQuickAction;
+        if (!render) return;
+        const id = quickActionIdFromItem(props);
+        const originalText = editor.state.doc.textBetween(range.from, range.to);
+
+        void render(id)
+          .then((content) => {
+            if (!content) return;
+            const withinDoc = range.to <= editor.state.doc.content.size;
+            const unchanged =
+              withinDoc && editor.state.doc.textBetween(range.from, range.to) === originalText;
+            if (!unchanged) return;
+            editor
+              .chain()
+              .focus()
+              .insertContentAt({ from: range.from, to: range.to }, content, {
+                contentType: "markdown",
+              })
+              .run();
+            window.getSelection()?.collapseToEnd();
+          })
+          .catch((error: unknown) => {
+            options.onRenderError?.(error);
+          });
+        return;
+      }
+
+      if (props.id === "note") {
+        editor
+          .chain()
+          .focus()
+          .insertContentAt(range, [{ type: "text", text: `/note ` }])
+          .run();
+        window.getSelection()?.collapseToEnd();
+        return;
+      }
+
+      const nodeAfter = editor.view.state.selection.$to.nodeAfter;
+      const overrideSpace = nodeAfter?.text?.startsWith(" ");
+      if (overrideSpace) range.to += 1;
+
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(range, [
+          {
+            type: "slashCommand",
+            attrs: {
+              id: props.id,
+              label: props.label,
+              mentionSuggestionChar: "/",
+            },
+          },
+          { type: "text", text: " " },
+        ])
+        .run();
+      window.getSelection()?.collapseToEnd();
+    },
+    render: createSuggestionPopupRender<SlashCommandItem, SlashCommandItem, SlashCommandListRef, SlashCommandListProps>({
+      pluginKey,
+      component: SlashCommandList,
+      getProps: (props) => ({
+        items: props.items,
+        query: props.query,
+        command: props.command,
+        hideOnEmpty: true,
       }),
       onKeyDown: (ref, props) => ref?.onKeyDown(props) ?? false,
     }),

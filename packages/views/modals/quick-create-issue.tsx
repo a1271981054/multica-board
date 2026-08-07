@@ -97,22 +97,11 @@ import { FileUploadButton } from "@multica/ui/components/common/file-upload-butt
 import { useT } from "../i18n";
 import { matchesPinyin } from "../editor/extensions/pinyin-match";
 import { escapeMarkdownLabel } from "../editor/utils/escape-markdown-label";
+import { SLASH_MODES } from "../editor/extensions/slash-command-modes";
 
 type ActorSelection =
   | { type: "agent"; id: string }
   | { type: "squad"; id: string };
-
-const CODEX_MODES = [
-  "MCP",
-  "侧边",
-  "反馈",
-  "宠物",
-  "推理",
-  "模型",
-  "状态",
-  "目标",
-  "计划模式",
-];
 
 // AgentCreatePanel — agent-mode body of the create-issue dialog. Renders
 // only the inner content; the surrounding `<Dialog>` AND `<DialogContent>`
@@ -310,7 +299,7 @@ export function AgentCreatePanel({
 
   const slashItems = useMemo(() => {
     const q = slashQuery.trim().toLowerCase();
-    const modes = CODEX_MODES.filter(
+    const modes = SLASH_MODES.filter(
       (mode) => !q || mode.toLowerCase().includes(q),
     ).map((name) => ({
       type: "模式" as const,

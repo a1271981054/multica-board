@@ -230,7 +230,7 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
           currentIssueId={issueId}
           attachments={pendingAttachments}
           enableSlashCommands
-          slashCommandMode="command"
+          slashCommandMode="universal"
           quickActionMenu={quickActionMenu}
         />
       </div>
