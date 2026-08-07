@@ -26,17 +26,17 @@ Tasks are grouped into Backlog, Todo, In Progress, and In Review columns. The Co
 
 ![Issue detail](docs/screenshots/issue-detail.png)
 
-任务详情页包含标题、描述、状态、负责人、项目、属性、执行日志和 Activity 时间线。智能体完成的工作会以评论和工作记录的形式留在这里。
+Codex 本地执行记录会展示每一步命令、Agent 分析和实际改动，方便直接查看智能体是怎么完成任务的。
 
-The issue detail page shows the description, status, assignee, project, properties, execution log, and the Activity timeline. Agent work is recorded here as comments and activity entries.
+The execution log shows each command, the agent's analysis, and the changes it makes, so you can review how Codex completed the task.
 
 ### 智能体 / Agents
 
 ![Agents](docs/screenshots/agents.png)
 
-智能体页面显示 Codex 是否在线、运行环境、访问权限、最近活跃时间和累计运行次数，也可以从这里创建新的智能体。
+智能体概览显示 Codex 是否在线、当前任务状态、并发数、最近运行记录和已配置的技能。
 
-The Agents page shows whether Codex is online, its runtime, access level, last active time, and total runs, and lets you create new agents.
+The agent overview shows Codex online status, current task state, concurrency, recent runs, and configured skills.
 
 ### 运行环境 / Runtimes
 
