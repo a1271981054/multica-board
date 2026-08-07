@@ -103,6 +103,32 @@ async function applyPatch({ asar, unpacked, webUrl, workDir }) {
   }
 
   const root = path.join(workDir, "extracted");
+
+  // Bridge used by the embedded Multica Board webview. Sandboxed preloads can
+  // require electron, so the board can ask the host app to open a Codex thread
+  // through the OS protocol handler instead of navigating the webview to a
+  // codex:// URL (which Chromium blocks with "content blocked").
+  writeFileSync(
+    path.join(root, "webview/multica-board-preload.js"),
+    `const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld("multicaBoard", {
+  openCodexThread: (threadId) =>
+    ipcRenderer.invoke("multica-board:open-codex-thread", String(threadId)),
+});
+`,
+    "utf8",
+  );
+
+  const ipcAnchor = "function oB({reconcileBrowserStorageId";
+  const ipcFile = findFile(path.join(root, ".vite/build"), ipcAnchor);
+  if (!ipcFile) throw new Error("Unsupported Codex build: IPC bridge anchor not found.");
+  patchText(
+    ipcFile,
+    ipcAnchor,
+    `try{l.ipcMain.removeHandler("multica-board:open-codex-thread")}catch{}l.ipcMain.handle("multica-board:open-codex-thread",async(e,t)=>{if(typeof t==="string"&&/^[0-9a-fA-F-]{8,}$/.test(t)){try{await l.shell.openExternal("codex://threads/"+t);return true}catch{return false}}return false});${ipcAnchor}`,
+    "IPC bridge",
+  );
+
   const routeAnchor =
     'path:`/plugins`,element:(0,D7.jsx)(vhc,{})})]})]}),null,';
   const routeFile = findFile(root, routeAnchor);
@@ -131,7 +157,7 @@ async function applyPatch({ asar, unpacked, webUrl, workDir }) {
   patchText(
     mainFile,
     mainAnchor,
-    "let m=(t,a,s)=>{if(n.Ra(s.partition)!=null||jR(s)||Rz(s))return;if(s.partition===`persist:multica-board`){a.partition=`persist:multica-board`,a.session=l.session.fromPartition(`persist:multica-board`),delete a.preload,a.nodeIntegration=!1,a.nodeIntegrationInSubFrames=!1,a.contextIsolation=!0,a.sandbox=!0,a.webSecurity=!0,a.devTools=!0,a.webviewTag=!1;return}",
+    "let m=(t,a,s)=>{if(n.Ra(s.partition)!=null||jR(s)||Rz(s))return;if(s.partition===`persist:multica-board`){a.partition=`persist:multica-board`,a.session=l.session.fromPartition(`persist:multica-board`),a.preload=require(\"node:path\").join(__dirname,\"../../webview/multica-board-preload.js\"),a.nodeIntegration=!1,a.nodeIntegrationInSubFrames=!1,a.contextIsolation=!0,a.sandbox=!0,a.webSecurity=!0,a.devTools=!0,a.webviewTag=!1;return}",
     "webview partition",
   );
 

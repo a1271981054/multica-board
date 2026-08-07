@@ -504,12 +504,23 @@ function PastRow({ task, issueId }: { task: AgentTask; issueId: string }) {
 }
 
 function CodexSessionLink({ sessionId }: { sessionId: string }) {
+  const openInCodex = () => {
+    const bridge = (window as unknown as { multicaBoard?: { openCodexThread?: (id: string) => Promise<unknown> } })
+      .multicaBoard;
+    if (bridge?.openCodexThread) {
+      void bridge.openCodexThread(sessionId);
+      return;
+    }
+    window.location.href = `codex://threads/${sessionId}`;
+  };
+
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <a
-            href={`codex://threads/${sessionId}`}
+          <button
+            type="button"
+            onClick={openInCodex}
             aria-label="在 Codex 中打开会话"
           />
         }

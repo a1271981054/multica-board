@@ -107,10 +107,10 @@ describe("ActiveTaskRow", () => {
       />,
     );
 
-    const link = container.querySelector(
-      'a[href="codex://threads/019fd761-486d-7473-8393-52fbb8973259"]',
+    const button = container.querySelector(
+      'button[aria-label="在 Codex 中打开会话"]',
     );
-    expect(link).not.toBeNull();
+    expect(button).not.toBeNull();
   });
 });
 
