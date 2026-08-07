@@ -3,6 +3,8 @@ package daemon
 import (
 	"strings"
 	"testing"
+
+	"github.com/multica-ai/multica/server/internal/daemon/execenv"
 )
 
 func TestDeriveTaskThreadNamePrefersClaimedThreadName(t *testing.T) {
@@ -40,5 +42,19 @@ func TestNormalizeThreadNameCollapsesWhitespaceAndTruncates(t *testing.T) {
 	}
 	if !strings.HasSuffix(got, "...") {
 		t.Fatalf("thread name should end with ellipsis marker, got %q", got)
+	}
+}
+
+func TestCodexThreadSourceForEnv(t *testing.T) {
+	t.Parallel()
+
+	if got := codexThreadSourceForEnv(&execenv.Environment{SharedCodexHome: true}); got != "user" {
+		t.Fatalf("shared codex home thread source = %q, want user", got)
+	}
+	if got := codexThreadSourceForEnv(&execenv.Environment{}); got != "" {
+		t.Fatalf("isolated codex home thread source = %q, want empty", got)
+	}
+	if got := codexThreadSourceForEnv(nil); got != "" {
+		t.Fatalf("nil env thread source = %q, want empty", got)
 	}
 }

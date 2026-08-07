@@ -144,6 +144,7 @@ vi.mock("@multica/core/workspace/queries", () => ({
   squadListOptions: (wsId: string) => ({
     queryKey: ["workspaces", wsId, "squads"],
   }),
+  skillListOptions: () => ({ queryKey: ["skills"] }),
 }));
 
 vi.mock("@multica/core/projects/queries", () => ({
@@ -181,6 +182,7 @@ vi.mock("@multica/core/auth", () => ({
 
 vi.mock("@multica/core/runtimes", () => ({
   runtimeListOptions: () => ({ queryKey: ["runtimes"] }),
+  runtimeModelsOptions: () => ({ queryKey: ["runtimeModels"] }),
   checkQuickCreateCliVersion: () => ({ state: "ok", min: "1.0.0" }),
   checkQuickCreateFieldsCliVersion: () => ({ state: "ok", min: "1.0.0" }),
   readRuntimeCliVersion: () => "1.2.3",
@@ -267,6 +269,15 @@ vi.mock("../editor", async () => {
 
     useImperativeHandle(ref, () => ({
       getMarkdown: () => valueRef.current,
+      getElement: () => null,
+      insertMarkdownAtCursor: (markdown: string, trimBefore = 0) => {
+        const current = valueRef.current;
+        const start = Math.max(0, current.length - trimBefore);
+        valueRef.current = current.slice(0, start) + markdown;
+        setValue(valueRef.current);
+        onUpdate?.(valueRef.current);
+        return true;
+      },
       clearContent: () => {
         valueRef.current = "";
         setValue("");
@@ -472,6 +483,25 @@ describe("AgentCreatePanel", () => {
         'Tell the agent what to do, e.g. "let Bohan fix the inbox loading slowness in the Web project"',
       ),
     ).toHaveValue("Persisted draft prompt");
+  });
+
+  it("inserts slash picks as slash command tags instead of plain text", async () => {
+    const { container } = renderPanel({
+      onClose: vi.fn(),
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+    });
+
+    const textarea = container.querySelector("textarea");
+    expect(textarea).not.toBeNull();
+    fireEvent.change(textarea!, { target: { value: "/" } });
+
+    const modeItem = await screen.findByRole("button", { name: /目标/ });
+    fireEvent.click(modeItem);
+
+    expect((textarea as HTMLTextAreaElement).value).toContain(
+      "[/目标](slash://skill/mode:目标)",
+    );
   });
 
   it("restores unfinished actor, project, priority, and due-date selections after remount", async () => {

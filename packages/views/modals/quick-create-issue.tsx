@@ -95,6 +95,7 @@ import { useIssueCreateUploads } from "./use-issue-create-uploads";
 import { FileUploadButton } from "@multica/ui/components/common/file-upload-button";
 import { useT } from "../i18n";
 import { matchesPinyin } from "../editor/extensions/pinyin-match";
+import { escapeMarkdownLabel } from "../editor/utils/escape-markdown-label";
 
 type ActorSelection =
   | { type: "agent"; id: string }
@@ -303,14 +304,22 @@ export function AgentCreatePanel({
     const q = slashQuery.trim().toLowerCase();
     const modes = CODEX_MODES.filter(
       (mode) => !q || mode.toLowerCase().includes(q),
-    ).map((name) => ({ type: "模式" as const, name }));
+    ).map((name) => ({
+      type: "模式" as const,
+      name,
+      id: `mode:${name}`,
+    }));
     const skillItems = skills
       .filter(
         (skill) =>
           !skill.name.startsWith(".") && !skill.name.endsWith(".disabled"),
       )
       .filter((skill) => !q || skill.name.toLowerCase().includes(q))
-      .map((skill) => ({ type: "技能" as const, name: skill.name }));
+      .map((skill) => ({
+        type: "技能" as const,
+        name: skill.name,
+        id: skill.id,
+      }));
     return [...modes, ...skillItems];
   }, [slashQuery, skills]);
 
@@ -767,7 +776,7 @@ export function AgentCreatePanel({
                 className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-caption hover:bg-accent"
                 onClick={() => {
                   const inserted = editorRef.current?.insertMarkdownAtCursor(
-                    `/${item.type}:${item.name} `,
+                    `[/${escapeMarkdownLabel(item.name)}](slash://skill/${item.id}) `,
                     slashQuery.length + 1,
                   );
                   if (inserted) {

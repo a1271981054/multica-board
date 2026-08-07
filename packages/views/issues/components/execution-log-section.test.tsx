@@ -98,6 +98,20 @@ describe("ActiveTaskRow", () => {
       "[@media(hover:hover)]:group-hover/execution-log-row:flex",
     );
   });
+
+  it("deep-links a shared Codex session into the sidebar thread", () => {
+    const { container } = renderWithI18n(
+      <ActiveTaskRow
+        task={makeTask({ session_id: "019fd761-486d-7473-8393-52fbb8973259" })}
+        issueId="issue-1"
+      />,
+    );
+
+    const link = container.querySelector(
+      'a[href="codex://threads/019fd761-486d-7473-8393-52fbb8973259"]',
+    );
+    expect(link).not.toBeNull();
+  });
 });
 
 describe("TaskCommentCoverage", () => {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, Loader2, RotateCcw, Square } from "lucide-react";
+import { ArrowUpRight, ChevronRight, Loader2, RotateCcw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { api, dispatchReasonCode } from "@multica/core/api";
 import { issueKeys } from "@multica/core/issues/queries";
@@ -347,6 +347,7 @@ export function ActiveTaskRow({
         )}
       </RowStatus>
       <RowActions>
+        {task.session_id && <CodexSessionLink sessionId={task.session_id} />}
         {showTranscript && (
           <TranscriptButton
             task={task}
@@ -473,6 +474,7 @@ function PastRow({ task, issueId }: { task: AgentTask; issueId: string }) {
         )}
       </RowStatus>
       <RowActions>
+        {task.session_id && <CodexSessionLink sessionId={task.session_id} />}
         <TranscriptButton task={task} agentName="" title={t(($) => $.execution_log.transcript_tooltip)} />
         {canRetry && (
           <Tooltip>
@@ -498,6 +500,25 @@ function PastRow({ task, issueId }: { task: AgentTask; issueId: string }) {
         )}
       </RowActions>
     </RowShell>
+  );
+}
+
+function CodexSessionLink({ sessionId }: { sessionId: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <a
+            href={`codex://threads/${sessionId}`}
+            aria-label="在 Codex 中打开会话"
+          />
+        }
+        className="flex items-center justify-center rounded p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+      >
+        <ArrowUpRight className="h-3.5 w-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>在 Codex 中打开</TooltipContent>
+    </Tooltip>
   );
 }
 

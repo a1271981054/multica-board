@@ -6155,6 +6155,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		Cwd:                       env.WorkDir,
 		Model:                     model,
 		ThreadName:                deriveTaskThreadName(task),
+		ThreadSource:              codexThreadSourceForEnv(env),
 		Timeout:                   d.cfg.AgentTimeout,
 		SemanticInactivityTimeout: d.cfg.CodexSemanticInactivityTimeout,
 		IdleWatchdogTimeout:       idleWatchdogTimeout,

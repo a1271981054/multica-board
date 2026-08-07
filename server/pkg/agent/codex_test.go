@@ -1711,6 +1711,34 @@ func TestCodexStartOrResumeThreadStartsFresh(t *testing.T) {
 	}
 }
 
+func TestCodexStartOrResumeThreadCarriesThreadSource(t *testing.T) {
+	t.Parallel()
+
+	c, fs, _ := newTestCodexClient(t)
+
+	wait := drainRPCScript(t, c, fs, []rpcResponse{
+		{
+			method: "thread/start",
+			result: json.RawMessage(`{"thread":{"id":"thr_shared"}}`),
+			assertFn: func(t *testing.T, params map[string]any) {
+				if params["threadSource"] != "user" {
+					t.Errorf("threadSource = %v, want user", params["threadSource"])
+				}
+			},
+		},
+	})
+	defer wait()
+
+	_, _, err := c.startOrResumeThread(
+		context.Background(),
+		ExecOptions{Cwd: "/work", ThreadSource: "user"},
+		slog.Default(),
+	)
+	if err != nil {
+		t.Fatalf("startOrResumeThread: %v", err)
+	}
+}
+
 func TestCodexStartOrResumeThreadSetsNameOnFreshThread(t *testing.T) {
 	t.Parallel()
 

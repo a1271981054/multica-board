@@ -33,8 +33,13 @@ type ExecOptions struct {
 	//
 	// A backend must therefore NOT assume this is populated, and adding a new
 	// backend that only reads SystemPrompt will silently receive nothing.
-	SystemPrompt              string
-	ThreadName                string
+	SystemPrompt string
+	ThreadName   string
+	// ThreadSource classifies a Codex thread for the app-server state DB.
+	// "user" makes shared-home sessions show up as regular conversations in
+	// the Codex sidebar; empty keeps the CLI default (currently also null).
+	// Only the codex backend consumes this today.
+	ThreadSource              string
 	MaxTurns                  int
 	Timeout                   time.Duration
 	SemanticInactivityTimeout time.Duration

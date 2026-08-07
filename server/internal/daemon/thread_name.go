@@ -1,6 +1,10 @@
 package daemon
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/multica-ai/multica/server/internal/daemon/execenv"
+)
 
 const codexThreadNameMaxRunes = 120
 
@@ -37,4 +41,14 @@ func normalizeThreadName(s string, maxRunes int) string {
 		return string(rs[:maxRunes])
 	}
 	return string(rs[:maxRunes-3]) + "..."
+}
+
+// codexThreadSourceForEnv classifies shared-home sessions as ordinary user
+// conversations so the Codex sidebar can show them in the same thread list
+// instead of treating them as anonymous CLI sessions.
+func codexThreadSourceForEnv(env *execenv.Environment) string {
+	if env != nil && env.SharedCodexHome {
+		return "user"
+	}
+	return ""
 }

@@ -1797,6 +1797,9 @@ func (c *codexClient) startOrResumeThread(ctx context.Context, opts ExecOptions,
 		"experimentalRawEvents":  false,
 		"persistExtendedHistory": true,
 	}
+	if opts.ThreadSource != "" {
+		startParams["threadSource"] = opts.ThreadSource
+	}
 	applyCodexReasoningEffort(startParams, opts.ThinkingLevel)
 	applyCodexServiceTier(startParams, opts.ServiceTier)
 	c.threadStartSent = true

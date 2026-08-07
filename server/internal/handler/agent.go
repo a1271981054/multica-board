@@ -331,7 +331,8 @@ type AgentTaskResponse struct {
 	// the brief even when that older session resumes cleanly. omitempty keeps it
 	// off the wire for the common (no-gap) case and for old daemons.
 	PriorSessionResumeUnavailable bool   `json:"prior_session_resume_unavailable,omitempty"`
-	WorkDir                       string `json:"work_dir,omitempty"` // local working directory pinned for this task; populated once the daemon reports it
+	WorkDir                       string `json:"work_dir,omitempty"`   // local working directory pinned for this task; populated once the daemon reports it
+	SessionID                     string `json:"session_id,omitempty"` // provider-native session/thread id reported by the daemon; lets the UI deep-link into Codex
 	// RelativeWorkDir is a privacy-safe display form of WorkDir intended for
 	// the UI. For standard tasks it strips the daemon's workspaces root so
 	// the user sees `<wsUUID>/<taskShort>/workdir`; for local_directory
@@ -690,6 +691,7 @@ func taskToResponse(t db.AgentTaskQueue, workspaceID string) AgentTaskResponse {
 		TriggerSummary:      textToPtr(t.TriggerSummary),
 		HandoffNote:         handoffNote,
 		WorkDir:             workDir,
+		SessionID:           t.SessionID.String,
 		RelativeWorkDir:     relativeWorkDir(workDir, workspaceID, uuidToString(t.ID)),
 		// Surface task source so the UI can distinguish issue-linked tasks
 		// from chat-spawned or autopilot-spawned ones; all three may arrive
