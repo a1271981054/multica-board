@@ -7,6 +7,7 @@ import { api } from "@multica/core/api";
 import { Button } from "@multica/ui/components/ui/button";
 import { cn } from "@multica/ui/lib/utils";
 import { SettingsCard, SettingsRow, SettingsSection, SettingsTab } from "./settings-layout";
+import { displayBoardVersion } from "../../common/board-version";
 
 export function SystemTab() {
   const versionQuery = useQuery({
@@ -70,7 +71,7 @@ export function SystemTab() {
         <SettingsCard>
           <SettingsRow label="当前版本" description="本机安装的 Multica Board 版本">
             <span className="font-mono text-body text-foreground">
-              {loading ? "检查中..." : `v${version?.current ?? "dev"}`}
+              {loading ? "检查中..." : displayBoardVersion(version?.current)}
             </span>
           </SettingsRow>
           <SettingsRow
@@ -78,7 +79,7 @@ export function SystemTab() {
             description={hasUpdate ? "发现新版本，可以立即下载并更新。" : "当前已是最新版本。"}
           >
             <span className="font-mono text-body text-foreground">
-              {loading ? "检查中..." : version?.latest ? `v${version.latest}` : "未知"}
+              {loading ? "检查中..." : version?.latest ? displayBoardVersion(version.latest) : "未知"}
             </span>
           </SettingsRow>
         </SettingsCard>

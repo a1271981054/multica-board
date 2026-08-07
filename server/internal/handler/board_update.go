@@ -89,7 +89,11 @@ func fetchLatestBoardRelease(repo string) (version, releaseURL string, err error
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		return "", "", err
 	}
-	return strings.TrimPrefix(payload.TagName, "v"), payload.HTMLURL, nil
+	tag := strings.TrimPrefix(payload.TagName, "multica-board-v")
+	if tag == payload.TagName {
+		tag = strings.TrimPrefix(payload.TagName, "v")
+	}
+	return tag, payload.HTMLURL, nil
 }
 
 func compareBoardVersions(a, b string) int {

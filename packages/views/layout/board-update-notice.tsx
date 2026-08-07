@@ -6,6 +6,7 @@ import { ArrowRight, X } from "lucide-react";
 import { api } from "@multica/core/api";
 import { useNavigation } from "../navigation";
 import { useWorkspacePaths } from "@multica/core/paths";
+import { displayBoardVersion } from "../common/board-version";
 
 export function BoardUpdateNotice() {
   const [dismissed, setDismissed] = useState(false);
@@ -25,7 +26,7 @@ export function BoardUpdateNotice() {
   return (
     <div className="flex items-center gap-3 border-b border-border bg-brand/5 px-4 py-2 text-caption">
       <span className="min-w-0 flex-1 truncate text-foreground">
-        发现新版本 v{versionQuery.data.latest}（当前 v{versionQuery.data.current}）
+        发现新版本 {displayBoardVersion(versionQuery.data.latest)}（当前 {displayBoardVersion(versionQuery.data.current)}）
       </span>
       <button
         type="button"
