@@ -122,56 +122,63 @@ contextBridge.exposeInMainWorld("multicaBoard", {
   const ipcAnchor = "function oB({reconcileBrowserStorageId";
   const ipcFile = findFile(path.join(root, ".vite/build"), ipcAnchor);
   if (!ipcFile) throw new Error("Unsupported Codex build: IPC bridge anchor not found.");
-  patchText(
-    ipcFile,
-    ipcAnchor,
-    `try{l.ipcMain.removeHandler("multica-board:open-codex-thread")}catch{}l.ipcMain.handle("multica-board:open-codex-thread",async(e,t)=>{if(typeof t==="string"&&/^[0-9a-fA-F-]{8,}$/.test(t)){try{await l.shell.openExternal("codex://threads/"+t);return true}catch{return false}}return false});${ipcAnchor}`,
-    "IPC bridge",
-  );
+  if (!readFileSync(ipcFile, "utf8").includes("multica-board:open-codex-thread")) {
+    patchText(
+      ipcFile,
+      ipcAnchor,
+      `try{l.ipcMain.removeHandler("multica-board:open-codex-thread")}catch{}l.ipcMain.handle("multica-board:open-codex-thread",async(e,t)=>{if(typeof t==="string"&&/^[0-9a-fA-F-]{8,}$/.test(t)){try{await l.shell.openExternal("codex://threads/"+t);return true}catch{return false}}return false});${ipcAnchor}`,
+      "IPC bridge",
+    );
+  }
 
   const routeAnchor =
     'path:`/plugins`,element:(0,D7.jsx)(vhc,{})})]})]}),null,';
   const routeFile = findFile(root, routeAnchor);
   if (!routeFile) throw new Error("Unsupported Codex build: route anchor not found.");
-  patchText(
-    routeFile,
-    routeAnchor,
-    `path:\`/task-board\`,element:(0,D7.jsx)(\`webview\`,{src:\`${webUrl}\`,className:\`h-full w-full border-0\`,allowpopups:\`true\`,partition:\`persist:multica-board\`})},${routeAnchor}`,
-    "route/nav",
-  );
+  if (!readFileSync(routeFile, "utf8").includes("/task-board")) {
+    patchText(
+      routeFile,
+      routeAnchor,
+      `path:\`/task-board\`,element:(0,D7.jsx)(\`webview\`,{src:\`${webUrl}\`,className:\`h-full w-full border-0\`,allowpopups:\`true\`,partition:\`persist:multica-board\`})},${routeAnchor}`,
+      "route/nav",
+    );
+  }
 
   const navAnchor = 'description:`Nav link that opens the skills page`})}):null,n&&r===`codex`?';
   const navFile = findFile(root, navAnchor);
   if (!navFile) throw new Error("Unsupported Codex build: nav anchor not found.");
-  patchText(
-    navFile,
-    navAnchor,
-    'description:`Nav link that opens the skills page`})}):null,n&&(r===`codex`||c)?(0,M8.jsx)(T8,{icon:KR,onClick:()=>{o(`/task-board`)},isActive:s.pathname.startsWith(`/task-board`),label:`任务看板`}):null,n&&r===`codex`?',
-    "sidebar nav",
-  );
+  if (!readFileSync(navFile, "utf8").includes("任务看板")) {
+    patchText(
+      navFile,
+      navAnchor,
+      'description:`Nav link that opens the skills page`})}):null,n&&(r===`codex`||c)?(0,M8.jsx)(T8,{icon:KR,onClick:()=>{o(`/task-board`)},isActive:s.pathname.startsWith(`/task-board`),label:`任务看板`}):null,n&&r===`codex`?',
+      "sidebar nav",
+    );
+  }
 
   const mainAnchor =
     "let m=(t,a,s)=>{if(n.Ra(s.partition)!=null||jR(s)||Rz(s))return;";
   const mainFile = findFile(path.join(root, ".vite/build"), mainAnchor);
   if (!mainFile) throw new Error("Unsupported Codex build: webview handler anchor not found.");
-  patchText(
-    mainFile,
-    mainAnchor,
-    "let m=(t,a,s)=>{if(n.Ra(s.partition)!=null||jR(s)||Rz(s))return;if(s.partition===`persist:multica-board`){a.partition=`persist:multica-board`,a.session=l.session.fromPartition(`persist:multica-board`),a.preload=require(\"node:path\").join(__dirname,\"../../webview/multica-board-preload.js\"),a.nodeIntegration=!1,a.nodeIntegrationInSubFrames=!1,a.contextIsolation=!0,a.sandbox=!0,a.webSecurity=!0,a.devTools=!0,a.webviewTag=!1;return}",
-    "webview partition",
-  );
+  if (!readFileSync(mainFile, "utf8").includes("multica-board-preload.js")) {
+    patchText(
+      mainFile,
+      mainAnchor,
+      "let m=(t,a,s)=>{if(n.Ra(s.partition)!=null||jR(s)||Rz(s))return;if(s.partition===`persist:multica-board`){a.partition=`persist:multica-board`,a.session=l.session.fromPartition(`persist:multica-board`),a.preload=require(\"node:path\").join(__dirname,\"../../webview/multica-board-preload.js\"),a.nodeIntegration=!1,a.nodeIntegrationInSubFrames=!1,a.contextIsolation=!0,a.sandbox=!0,a.webSecurity=!0,a.devTools=!0,a.webviewTag=!1;return}",
+      "webview partition",
+    );
+  }
 
   const htmlFile = path.join(root, "webview/index.html");
   if (!existsSync(htmlFile)) throw new Error("Unsupported Codex build: webview/index.html not found.");
   const html = readFileSync(htmlFile, "utf8");
-  for (const [from, to] of [
-    ["child-src &#39;self&#39; blob:", `child-src &#39;self&#39; ${webUrl} blob:`],
-    ["frame-src &#39;self&#39; blob:", `frame-src &#39;self&#39; ${webUrl} blob:`],
-  ]) {
-    if (!html.includes(from)) throw new Error("Unsupported Codex build: CSP anchor not found.");
+  if (!html.includes(webUrl)) {
+    for (const from of ["child-src &#39;self&#39; blob:", "frame-src &#39;self&#39; blob:"]) {
+      if (!html.includes(from)) throw new Error("Unsupported Codex build: CSP anchor not found.");
+    }
+    writeFileSync(htmlFile, html.replaceAll("child-src &#39;self&#39; blob:", `child-src &#39;self&#39; ${webUrl} blob:`).replaceAll("frame-src &#39;self&#39; blob:", `frame-src &#39;self&#39; ${webUrl} blob:`));
+    console.log("patched: CSP");
   }
-  writeFileSync(htmlFile, html.replaceAll("child-src &#39;self&#39; blob:", `child-src &#39;self&#39; ${webUrl} blob:`).replaceAll("frame-src &#39;self&#39; blob:", `frame-src &#39;self&#39; ${webUrl} blob:`));
-  console.log("patched: CSP");
 
   const unpackDirs = existsSync(unpacked) ? readdirSync(unpacked).join(",") : "";
   const args = ["pack", path.join(workDir, "extracted"), path.join(workDir, "app.asar.new")];

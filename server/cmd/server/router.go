@@ -896,6 +896,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		r.Patch("/api/me/onboarding", h.PatchOnboarding)
 		r.Post("/api/me/onboarding/complete", h.CompleteOnboarding)
 		r.Post("/api/me/onboarding/cloud-waitlist", h.JoinCloudWaitlist)
+		r.Get("/api/board/version", h.GetBoardVersion)
+		r.Post("/api/board/update", h.StartBoardUpdate)
+		r.Get("/api/board/update/status", h.GetBoardUpdateStatus)
 		// DEPRECATED — shim routes for desktop < v3 during the rollout
 		// window. v3 frontend creates the Helper agent + starter issue
 		// via generic CreateAgent / CreateIssue and only calls /complete

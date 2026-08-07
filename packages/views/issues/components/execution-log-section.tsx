@@ -514,9 +514,11 @@ function CodexSessionLink({ sessionId }: { sessionId: string }) {
     const bridge = (window as unknown as { multicaBoard?: { openCodexThread?: (id: string) => Promise<unknown> } })
       .multicaBoard;
     if (bridge?.openCodexThread) {
-      void bridge.openCodexThread(sessionId).then((ok) => {
-        if (!ok) copyDeepLink();
-      });
+      void bridge.openCodexThread(sessionId)
+        .then((ok) => {
+          if (!ok) copyDeepLink();
+        })
+        .catch(() => copyDeepLink());
       return;
     }
     copyDeepLink();

@@ -302,10 +302,22 @@ export function useIssueTimeline(issueId: string, userId?: string) {
   // on success — so a slow send no longer leaves the box full next to an
   // already-posted comment, and a failed send keeps the draft.
   const submitComment = useCallback(
-    async (content: string, attachmentIds?: string[], suppressAgentIds?: string[]): Promise<boolean> => {
+    async (
+      content: string,
+      attachmentIds?: string[],
+      suppressAgentIds?: string[],
+      model?: string,
+      thinkingLevel?: string,
+    ): Promise<boolean> => {
       if (!content.trim() || !userId) return false;
       try {
-        const comment = await createComment({ content, attachmentIds, suppressAgentIds });
+        const comment = await createComment({
+          content,
+          attachmentIds,
+          suppressAgentIds,
+          model,
+          thinkingLevel,
+        });
         warnUnhandledTriggers(comment?.trigger_outcomes, comment?.content);
         return true;
       } catch (err) {
@@ -321,7 +333,14 @@ export function useIssueTimeline(issueId: string, userId?: string) {
   );
 
   const submitReply = useCallback(
-    async (parentId: string, content: string, attachmentIds?: string[], suppressAgentIds?: string[]): Promise<boolean> => {
+    async (
+      parentId: string,
+      content: string,
+      attachmentIds?: string[],
+      suppressAgentIds?: string[],
+      model?: string,
+      thinkingLevel?: string,
+    ): Promise<boolean> => {
       if (!content.trim() || !userId) return false;
       try {
         const comment = await createComment({
@@ -330,6 +349,8 @@ export function useIssueTimeline(issueId: string, userId?: string) {
           parentId,
           attachmentIds,
           suppressAgentIds,
+          model,
+          thinkingLevel,
         });
         warnUnhandledTriggers(comment?.trigger_outcomes, comment?.content);
         return true;

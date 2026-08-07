@@ -15,6 +15,9 @@ import { CommentTriggerChips } from "./comment-trigger-chips";
 import { useCommentTriggerPreview } from "../hooks/use-comment-trigger-preview";
 import { useCommentUploads } from "./use-comment-uploads";
 import { useQuickActionMenu } from "../hooks/use-quick-action-menu";
+import { RunOverridePickers } from "./run-override-pickers";
+import { useRunModelOverrides } from "../hooks/use-run-model-overrides";
+import type { IssueAssigneeType } from "@multica/core/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,12 +26,20 @@ import { useQuickActionMenu } from "../hooks/use-quick-action-menu";
 interface ReplyInputProps {
   issueId: string;
   parentId: string;
+  assigneeType?: IssueAssigneeType;
+  assigneeId?: string;
   placeholder?: string;
   avatarType: string;
   avatarId: string;
   /** Resolves true on success, false on failure — the reply box keeps its text
    *  (locked + spinning) until then, clearing only on success. */
-  onSubmit: (content: string, attachmentIds?: string[], suppressAgentIds?: string[]) => Promise<boolean>;
+  onSubmit: (
+    content: string,
+    attachmentIds?: string[],
+    suppressAgentIds?: string[],
+    model?: string,
+    thinkingLevel?: string,
+  ) => Promise<boolean>;
   size?: "sm" | "default";
   /** When set, hydrates/persists the in-progress reply via the draft store.
    *  Required for replies inside virtualized timeline threads, where the
@@ -43,6 +54,8 @@ interface ReplyInputProps {
 function ReplyInput({
   issueId,
   parentId,
+  assigneeType,
+  assigneeId,
   placeholder,
   avatarType,
   avatarId,
@@ -95,6 +108,7 @@ function ReplyInput({
   const { isDragOver, dropZoneProps } = useFileDropZone({
     onDrop: lazy.uploadOrQueue,
   });
+  const runOverrides = useRunModelOverrides(assigneeType, assigneeId);
 
   // Flush on tab close / mobile background — same rationale as CommentInput.
   useEffect(() => {
@@ -179,6 +193,8 @@ function ReplyInput({
         content,
         activeIds.length > 0 ? activeIds : undefined,
         suppressAgentIds.length > 0 ? suppressAgentIds : undefined,
+        runOverrides.model || undefined,
+        runOverrides.thinkingLevel || undefined,
       );
     },
     onAccepted: () => {
@@ -221,6 +237,11 @@ function ReplyInput({
           !isEmpty && "pb-9",
         )}
       >
+        {runOverrides.enabled && (
+          <div className="flex items-center justify-end pb-1.5 shrink-0">
+            <RunOverridePickers overrides={runOverrides} />
+          </div>
+        )}
         {/* Lock the editor while the reply is in flight — see CommentInput. */}
         {lazy.active && (
         <div

@@ -14,16 +14,27 @@ import { useCommentTriggerPreview } from "../hooks/use-comment-trigger-preview";
 import { useCommentUploads } from "./use-comment-uploads";
 import { useQuickActionMenu } from "../hooks/use-quick-action-menu";
 import { useStickyComposer } from "../hooks/use-sticky-composer";
+import { RunOverridePickers } from "./run-override-pickers";
+import { useRunModelOverrides } from "../hooks/use-run-model-overrides";
+import type { IssueAssigneeType } from "@multica/core/types";
 
 interface CommentInputProps {
   issueId: string;
+  assigneeType?: IssueAssigneeType;
+  assigneeId?: string;
   /** Resolves true on success, false on failure. The composer keeps the text
    *  (editor locked + button spinning) until this settles, then clears only on
    *  success — a failed send must not silently discard the user's draft. */
-  onSubmit: (content: string, attachmentIds?: string[], suppressAgentIds?: string[]) => Promise<boolean>;
+  onSubmit: (
+    content: string,
+    attachmentIds?: string[],
+    suppressAgentIds?: string[],
+    model?: string,
+    thinkingLevel?: string,
+  ) => Promise<boolean>;
 }
 
-function CommentInput({ issueId, onSubmit }: CommentInputProps) {
+function CommentInput({ issueId, assigneeType, assigneeId, onSubmit }: CommentInputProps) {
   const { t } = useT("issues");
   const { t: tEditor } = useT("editor");
   const sendShortcut = useShortcut("send");
@@ -74,6 +85,7 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
   // composer to the bottom of the scroll viewport when enabled. Shared with
   // the host so the height cap below can never outlive the pinning.
   const sticky = useStickyComposer();
+  const runOverrides = useRunModelOverrides(assigneeType, assigneeId);
 
   // Draft persistence. Hydrate from store on mount via `defaultValue` above
   // (ContentEditorRef has no setContent, so this is the only injection point).
@@ -164,6 +176,8 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
         content,
         activeIds.length > 0 ? activeIds : undefined,
         suppressAgentIds.length > 0 ? suppressAgentIds : undefined,
+        runOverrides.model || undefined,
+        runOverrides.thinkingLevel || undefined,
       );
     },
     onAccepted: () => {
@@ -192,6 +206,11 @@ function CommentInput({ issueId, onSubmit }: CommentInputProps) {
       {...dropZoneProps}
       className="relative flex flex-col rounded-lg bg-card pb-8 ring-1 ring-border"
     >
+      {runOverrides.enabled && (
+        <div className="flex items-center justify-end px-3 pt-2 shrink-0">
+          <RunOverridePickers overrides={runOverrides} />
+        </div>
+      )}
       {/* Lock the editor while the send is in flight. ContentEditor can't
           toggle Tiptap's `editable` post-mount (see its docstring), so the
           documented way to make it non-interactive is a pointer-events-none +

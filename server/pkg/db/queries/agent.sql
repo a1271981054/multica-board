@@ -273,10 +273,11 @@ ORDER BY created_at DESC;
 -- head_sha stamps the commit under review into the task's context JSONB so the
 -- reviewer-loop dedup (HasPendingTaskForIssueAndAgent) can tell a pending run
 -- against an OLD head apart from a fresh request against a NEW head (TEN-356).
--- Empty/absent head_sha leaves context NULL, preserving pre-TEN-356 behavior for
--- issues with no linked PR. Issue-linked tasks never hit quick-create context
--- parsing (parseQuickCreateContext short-circuits on IssueID.Valid), so this
--- key rides harmlessly alongside.
+-- Empty/absent head_sha and overrides leave context NULL, preserving
+-- pre-TEN-356 behavior for issues with no linked PR. Per-run model /
+-- thinking_level overrides from manual create or the comment composer ride in
+-- the same context JSONB so the daemon claim handler can surface them to the
+-- provider CLI without a schema change.
 INSERT INTO agent_task_queue (
     agent_id, runtime_id, issue_id, status, priority, trigger_comment_id,
     coalesced_comment_ids, trigger_summary, force_fresh_session, is_leader_task, handoff_note,
@@ -293,7 +294,13 @@ VALUES (
     sqlc.narg(squad_id),
     CASE
         WHEN COALESCE(sqlc.narg('head_sha')::text, '') <> ''
-        THEN jsonb_build_object('head_sha', sqlc.narg('head_sha')::text)
+          OR COALESCE(sqlc.narg('model_override')::text, '') <> ''
+          OR COALESCE(sqlc.narg('thinking_level_override')::text, '') <> ''
+        THEN jsonb_build_object(
+            'head_sha', COALESCE(sqlc.narg('head_sha')::text, ''),
+            'model', COALESCE(sqlc.narg('model_override')::text, ''),
+            'thinking_level', COALESCE(sqlc.narg('thinking_level_override')::text, '')
+        )
         ELSE NULL
     END,
     sqlc.narg(originator_user_id),

@@ -34,9 +34,12 @@ cmd_patch() {
 }
 
 cmd_update() {
-  local current latest
+  local current latest arch asset url tmp expected actual apply_only
+  apply_only=false
+  [[ "${1:-}" == "--apply" ]] && apply_only=true
   current="$(cat "$BOARD_VERSION_FILE" 2>/dev/null || echo 0.0.0)"
-  latest="$(curl -fsSL "https://api.github.com/repos/${BOARD_REPO}/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))' 2>/dev/null || echo "")"
+  board_load_config
+  latest="$(curl -fsSL --max-time 15 "https://api.github.com/repos/${BOARD_REPO}/releases/latest" | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"].lstrip("v"))' 2>/dev/null || echo "")"
   if [[ -z "$latest" ]]; then
     board_fail "Could not check latest release."
   fi
@@ -45,7 +48,36 @@ cmd_update() {
     return
   fi
   board_info "New version available: $latest (current $current)."
-  board_info "Run: curl -fsSL ${BOARD_RELEASE_BASE}/install.sh | sudo bash"
+  mkdir -p "$BOARD_HOME/updates"
+  local status_file="$BOARD_HOME/updates/status.json"
+  printf '{"status":"downloading","current":"%s","latest":"%s","message":"正在下载","updated_at":"%s"}\n' \
+    "$current" "$latest" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$status_file"
+  arch="$(board_arch)"
+  asset="multica-board-macos-${arch}.tar.gz"
+  url="$BOARD_RELEASE_BASE/$asset"
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
+  board_info "Downloading $asset"
+  curl -fsSL "$url" -o "$tmp/board.tar.gz"
+  if curl -fsSL --max-time 15 "$BOARD_RELEASE_BASE/checksums.txt" -o "$tmp/checksums.txt" 2>/dev/null; then
+    expected="$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/checksums.txt" | head -1 || true)"
+    if [[ -n "$expected" ]]; then
+      actual="$(shasum -a 256 "$tmp/board.tar.gz" | awk '{print $1}')"
+      if [[ "$actual" != "$expected" ]]; then
+        printf '{"status":"error","message":"校验失败","updated_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$status_file"
+        board_fail "Checksum mismatch (expected $expected, got $actual)."
+      fi
+      board_ok "Checksum verified"
+    fi
+  fi
+  mkdir -p "$tmp/bundle"
+  tar -xzf "$tmp/board.tar.gz" -C "$tmp/bundle"
+  board_info "Applying update"
+  trap - EXIT
+  nohup bash "$tmp/bundle/lib/update-apply.sh" \
+    "$tmp/bundle" "$BOARD_INSTALL_DIR" "$BOARD_HOME" \
+    > "$BOARD_HOME/updates/update.log" 2>&1 &
+  board_ok "Update started in background. Check: multica-board status"
 }
 
 cmd_uninstall() {

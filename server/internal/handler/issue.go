@@ -2402,6 +2402,10 @@ type CreateIssueRequest struct {
 	// origin_id=agent_task_queue.id).
 	OriginType *string `json:"origin_type,omitempty"`
 	OriginID   *string `json:"origin_id,omitempty"`
+	// Optional per-run overrides applied when this create triggers an agent
+	// task (manual create with an agent/squad assignee).
+	Model         string `json:"model,omitempty"`
+	ThinkingLevel string `json:"thinking_level,omitempty"`
 
 	AllowDuplicate bool `json:"allow_duplicate,omitempty"`
 }
@@ -2604,25 +2608,27 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	res, err := h.IssueService.Create(r.Context(), service.IssueCreateParams{
-		WorkspaceID:    wsUUID,
-		Title:          req.Title,
-		Description:    ptrToText(req.Description),
-		Status:         status,
-		Priority:       priority,
-		AssigneeType:   assigneeType,
-		AssigneeID:     assigneeID,
-		CreatorType:    creatorType,
-		CreatorID:      parseUUID(actualCreatorID),
-		ParentIssueID:  parentIssueID,
-		ProjectID:      projectID,
-		StartDate:      startDate,
-		DueDate:        dueDate,
-		OriginType:     originType,
-		OriginID:       originID,
-		Stage:          ptrToInt4(req.Stage),
-		AttachmentIDs:  attachmentIDs,
-		LabelIDs:       labelIDs,
-		AllowDuplicate: req.AllowDuplicate,
+		WorkspaceID:           wsUUID,
+		Title:                 req.Title,
+		Description:           ptrToText(req.Description),
+		Status:                status,
+		Priority:              priority,
+		AssigneeType:          assigneeType,
+		AssigneeID:            assigneeID,
+		CreatorType:           creatorType,
+		CreatorID:             parseUUID(actualCreatorID),
+		ParentIssueID:         parentIssueID,
+		ProjectID:             projectID,
+		StartDate:             startDate,
+		DueDate:               dueDate,
+		OriginType:            originType,
+		OriginID:              originID,
+		Stage:                 ptrToInt4(req.Stage),
+		AttachmentIDs:         attachmentIDs,
+		LabelIDs:              labelIDs,
+		AllowDuplicate:        req.AllowDuplicate,
+		ModelOverride:         strings.TrimSpace(req.Model),
+		ThinkingLevelOverride: strings.TrimSpace(req.ThinkingLevel),
 	}, service.IssueCreateOpts{
 		ActorID:          actualCreatorID,
 		AnalyticsAgentID: analyticsAgentID,

@@ -2391,6 +2391,8 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
         <div className="pb-3" id={`comment-${item.id}`}>
           <CommentCard
             issueId={id}
+            assigneeType={issue?.assignee_type ?? undefined}
+            assigneeId={issue?.assignee_id ?? undefined}
             entry={item.entry}
             replies={timelineView.threadReplies.get(item.id) ?? EMPTY_REPLIES}
             currentUserId={user?.id}
@@ -3073,7 +3075,13 @@ export function IssueDetail({ issueId, onDelete, onDone, defaultSidebarOpen = tr
                 keeps the previous issue's in-memory content and the
                 next keystroke would flush it into the new issue's
                 draft key. */}
-            <CommentInput key={id} issueId={id} onSubmit={submitComment} />
+            <CommentInput
+              key={id}
+              issueId={id}
+              assigneeType={issue?.assignee_type ?? undefined}
+              assigneeId={issue?.assignee_id ?? undefined}
+              onSubmit={submitComment}
+            />
           </div>
         </div>
         </div>

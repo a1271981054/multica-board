@@ -374,6 +374,8 @@ type AgentTaskResponse struct {
 	QuickCreateAttachmentIDs []string               `json:"quick_create_attachment_ids,omitempty"` // attachment ids uploaded in the quick-create prompt and bound on issue create
 	QuickCreateModel         string                 `json:"quick_create_model,omitempty"`          // per-run model override from the quick-create modal
 	QuickCreateThinkingLevel string                 `json:"quick_create_thinking_level,omitempty"` // per-run reasoning override from the quick-create modal
+	RunModelOverride         string                 `json:"run_model_override,omitempty"`          // per-run model override for issue-bound tasks (manual create / comment)
+	RunThinkingLevelOverride string                 `json:"run_thinking_level_override,omitempty"` // per-run reasoning override for issue-bound tasks (manual create / comment)
 	HandoffNote              string                 `json:"handoff_note,omitempty"`                // assignment handoff instruction; rendered into the run's opening prompt + issue_context.md (omitempty so old daemons ignore it)
 	SquadID                  string                 `json:"squad_id,omitempty"`                    // for quick-create tasks where the picker was a squad; Agent is still the resolved leader
 	SquadName                string                 `json:"squad_name,omitempty"`                  // display name for the picker squad

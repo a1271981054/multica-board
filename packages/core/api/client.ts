@@ -886,6 +886,30 @@ export class ApiClient {
     });
   }
 
+  async getBoardVersion(): Promise<{
+    current: string;
+    latest?: string;
+    update_available: boolean;
+    release_url?: string;
+    message?: string;
+  }> {
+    return this.fetch("/api/board/version");
+  }
+
+  async startBoardUpdate(): Promise<{ started: boolean }> {
+    return this.fetch("/api/board/update", { method: "POST" });
+  }
+
+  async getBoardUpdateStatus(): Promise<{
+    status: string;
+    current?: string;
+    latest?: string;
+    message?: string;
+    updated_at?: string;
+  }> {
+    return this.fetch("/api/board/update/status");
+  }
+
   async updateIssue(id: string, data: UpdateIssueRequest): Promise<Issue> {
     return this.fetch(`/api/issues/${id}`, {
       method: "PUT",
@@ -957,6 +981,8 @@ export class ApiClient {
     parentId?: string,
     attachmentIds?: string[],
     suppressAgentIds?: string[],
+    model?: string,
+    thinkingLevel?: string,
   ): Promise<Comment> {
     return this.fetch(`/api/issues/${issueId}/comments`, {
       method: "POST",
@@ -966,6 +992,8 @@ export class ApiClient {
         ...(parentId ? { parent_id: parentId } : {}),
         ...(attachmentIds?.length ? { attachment_ids: attachmentIds } : {}),
         ...(suppressAgentIds?.length ? { suppress_agent_ids: suppressAgentIds } : {}),
+        ...(model ? { model } : {}),
+        ...(thinkingLevel ? { thinking_level: thinkingLevel } : {}),
       }),
     });
   }

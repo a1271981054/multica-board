@@ -804,13 +804,17 @@ export function useCreateComment(issueId: string) {
       parentId,
       attachmentIds,
       suppressAgentIds,
+      model,
+      thinkingLevel,
     }: {
       content: string;
       type?: string;
       parentId?: string;
       attachmentIds?: string[];
       suppressAgentIds?: string[];
-    }) => api.createComment(issueId, content, type, parentId, attachmentIds, suppressAgentIds),
+      model?: string;
+      thinkingLevel?: string;
+    }) => api.createComment(issueId, content, type, parentId, attachmentIds, suppressAgentIds, model, thinkingLevel),
     onSuccess: (comment) => {
       const entry: TimelineEntry = {
         type: "comment",

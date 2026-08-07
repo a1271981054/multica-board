@@ -36,7 +36,7 @@ import { api, dispatchReasonCode } from "@multica/core/api";
 import { ReplyInput } from "./reply-input";
 import { CommentTriggerChips } from "./comment-trigger-chips";
 import { useCommentTriggerPreview } from "../hooks/use-comment-trigger-preview";
-import type { TimelineEntry, Attachment } from "@multica/core/types";
+import type { TimelineEntry, Attachment, IssueAssigneeType } from "@multica/core/types";
 import { contentReferencesAttachment } from "@multica/core/types";
 import { selectStandaloneAttachments } from "@multica/core/attachments/image-sequence";
 import { useCommentCollapseStore, useCommentDraftStore } from "@multica/core/issues/stores";
@@ -88,6 +88,8 @@ function StickyHeaderShell({
 
 interface CommentCardProps {
   issueId: string;
+  assigneeType?: IssueAssigneeType;
+  assigneeId?: string;
   entry: TimelineEntry;
   /**
    * Flat list of every nested reply under this thread root, in render order.
@@ -106,7 +108,14 @@ interface CommentCardProps {
    * `CommentRow` has to rerun the rule per row.
    */
   canModerate?: boolean;
-  onReply: (parentId: string, content: string, attachmentIds?: string[], suppressAgentIds?: string[]) => Promise<boolean>;
+  onReply: (
+    parentId: string,
+    content: string,
+    attachmentIds?: string[],
+    suppressAgentIds?: string[],
+    model?: string,
+    thinkingLevel?: string,
+  ) => Promise<boolean>;
   onEdit: (commentId: string, content: string, attachmentIds: string[], suppressAgentIds?: string[]) => Promise<void>;
   onDelete: (commentId: string) => void;
   onToggleReaction: (commentId: string, emoji: string) => void;
@@ -746,6 +755,8 @@ function CommentRow({
 
 function CommentCardImpl({
   issueId,
+  assigneeType,
+  assigneeId,
   entry,
   replies,
   currentUserId,
@@ -1132,12 +1143,16 @@ function CommentCardImpl({
                 <ReplyInput
                   issueId={issueId}
                   parentId={entry.id}
+                  assigneeType={assigneeType}
+                  assigneeId={assigneeId}
                   placeholder={t(($) => $.reply.placeholder)}
                   size="sm"
                   avatarType="member"
                   avatarId={currentUserId ?? ""}
                   draftKey={`reply:${issueId}:${entry.id}`}
-                  onSubmit={(content, attachmentIds, suppressAgentIds) => onReply(entry.id, content, attachmentIds, suppressAgentIds)}
+                  onSubmit={(content, attachmentIds, suppressAgentIds, model, thinkingLevel) =>
+                    onReply(entry.id, content, attachmentIds, suppressAgentIds, model, thinkingLevel)
+                  }
                 />
               </div>
             </>

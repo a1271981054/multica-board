@@ -144,7 +144,7 @@ vi.mock("../navigation", () => ({
 }));
 
 vi.mock("@multica/core/paths", () => ({
-  useCurrentWorkspace: () => ({ name: "Test Workspace" }),
+  useCurrentWorkspace: () => ({ id: "ws-test", name: "Test Workspace" }),
   useWorkspacePaths: () => ({
     issueDetail: (id: string) => `/ws-test/issues/${id}`,
     settings: () => "/ws-test/settings",
@@ -180,6 +180,7 @@ vi.mock("../issues/hooks/use-issue-trigger-preview", () => ({
 
 vi.mock("@multica/core/workspace/hooks", () => ({
   useActorName: () => ({ getActorName: () => "Agent" }),
+  useCurrentWorkspace: () => ({ id: "ws-test", name: "Test Workspace" }),
 }));
 
 // CreateRunHint now renders an ActorAvatar for agent/squad assignees. This
@@ -288,12 +289,14 @@ vi.mock("../editor", async () => {
   const ContentEditor = forwardRef(({ defaultValue, onUpdate, onSubmit, onUploadFile, onUploadingChange, placeholder, attachments }: any, ref: any) => {
     const valueRef = useRef(defaultValue || "");
     const [value, setValue] = useState(defaultValue || "");
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     // Mirrors the real editor's `uploading` node attrs: the placeholder is in
     // the doc from before the await until the upload settles, and the host
     // hears about it through onUploadingChange.
     const inFlightRef = useRef(0);
     useImperativeHandle(ref, () => ({
       getMarkdown: () => valueRef.current,
+      focus: () => inputRef.current?.focus(),
       clearContent: () => {
         valueRef.current = "";
         setValue("");
@@ -318,6 +321,7 @@ vi.mock("../editor", async () => {
     return (
       <>
         <textarea
+          ref={inputRef}
           value={value}
           placeholder={placeholder}
           data-attachments-count={attachments?.length ?? 0}
@@ -631,15 +635,15 @@ describe("CreateIssueModal", () => {
 
     renderModal(<CreateIssueModal onClose={onClose} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
-      target: { value: "  Ship create issue regression coverage  " },
+    fireEvent.change(screen.getByPlaceholderText("Add description..."), {
+      target: { value: "修复登录按钮" },
     });
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => {
       expect(mockCreateIssue).toHaveBeenCalledWith({
-        title: "Ship create issue regression coverage",
-        description: undefined,
+        title: "修复登录按钮",
+        description: "修复登录按钮",
         status: "todo",
         priority: "none",
         assignee_type: undefined,
@@ -681,7 +685,7 @@ describe("CreateIssueModal", () => {
 
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+    fireEvent.change(screen.getByPlaceholderText("Add description..."), {
       target: { value: "Labeled issue" },
     });
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
@@ -719,7 +723,7 @@ describe("CreateIssueModal", () => {
 
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
 
-    fireEvent.change(screen.getByPlaceholderText("Issue title"), {
+    fireEvent.change(screen.getByPlaceholderText("Add description..."), {
       target: { value: "Labeled issue" },
     });
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
@@ -744,14 +748,13 @@ describe("CreateIssueModal", () => {
 
     renderModal(<CreateIssueModal onClose={onClose} />);
 
-    await user.type(screen.getByPlaceholderText("Issue title"), "First follow-up issue");
-    await user.type(screen.getByPlaceholderText("Add description..."), "Description to clear");
+    await user.type(screen.getByPlaceholderText("Add description..."), "修复登录按钮");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => {
       expect(mockCreateIssue).toHaveBeenCalledWith({
-        title: "First follow-up issue",
-        description: "Description to clear",
+        title: "修复登录按钮",
+        description: "修复登录按钮",
         status: "todo",
         priority: "none",
         assignee_type: undefined,
@@ -765,7 +768,6 @@ describe("CreateIssueModal", () => {
     });
 
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByPlaceholderText("Issue title")).toHaveValue("");
     expect(screen.getByPlaceholderText("Add description...")).toHaveValue("");
     expect(mockSetManual).toHaveBeenCalledWith({
       title: "",
@@ -793,7 +795,7 @@ describe("CreateIssueModal", () => {
     await screen.findByText("Customer tier");
     await user.click(screen.getByText("Customer tier"));
     await user.click(screen.getByRole("button", { name: "Edit Customer tier" }));
-    await user.type(screen.getByPlaceholderText("Issue title"), "Enterprise follow-up");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Enterprise follow-up");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => {
@@ -985,7 +987,7 @@ describe("CreateIssueModal", () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Refactor auth");
     await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
 
     expect(onSwitchMode).toHaveBeenCalledTimes(1);
@@ -1021,7 +1023,7 @@ describe("CreateIssueModal", () => {
     );
 
     renderModal(<CreateIssueModal onClose={onClose} />);
-    await user.type(screen.getByPlaceholderText("Issue title"), "Login bug");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Login bug");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => expect(mockToastCustom).toHaveBeenCalledTimes(1));
@@ -1034,7 +1036,7 @@ describe("CreateIssueModal", () => {
 
     expect(screen.getByText("Duplicate issue")).toBeInTheDocument();
     expect(screen.getByText(/MUL-7/)).toBeInTheDocument();
-    expect(screen.getByText(/Login bug/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Login bug/).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole("button", { name: "View existing issue" }));
     expect(mockPush).toHaveBeenCalledWith("/ws-test/issues/issue-dup");
@@ -1054,7 +1056,7 @@ describe("CreateIssueModal", () => {
     );
 
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText("Issue title"), "Login bug");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Login bug");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledTimes(1));
@@ -1069,7 +1071,7 @@ describe("CreateIssueModal", () => {
     mockCreateIssue.mockRejectedValue(new Error("Server is overloaded, try again"));
 
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText("Issue title"), "Anything");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Anything");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledTimes(1));
@@ -1083,7 +1085,7 @@ describe("CreateIssueModal", () => {
     mockCreateIssue.mockRejectedValue("network exploded");
 
     renderModal(<CreateIssueModal onClose={vi.fn()} />);
-    await user.type(screen.getByPlaceholderText("Issue title"), "Anything");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Anything");
     await user.click(screen.getByRole("button", { name: "Create Issue" }));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledTimes(1));
@@ -1107,7 +1109,7 @@ describe("CreateIssueModal", () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Refactor auth");
 
     await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
 
@@ -1162,7 +1164,7 @@ describe("CreateIssueModal", () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText("Issue title"), "Refactor auth");
+    await user.type(screen.getByPlaceholderText("Add description..."), "Refactor auth");
     await user.click(screen.getByRole("button", { name: /Switch to Agent/i }));
 
     expect(onSwitchMode).toHaveBeenCalledTimes(1);
@@ -1291,8 +1293,9 @@ describe("CreateIssueModal", () => {
       />,
     );
 
-    await user.type(screen.getByPlaceholderText("Issue title"), "Update");
-    await user.type(screen.getByPlaceholderText("Add description..."), "Some body");
+    fireEvent.change(screen.getByPlaceholderText("Add description..."), {
+      target: { value: "Update\n\nSome body" },
+    });
 
     mockSetManual.mockClear();
     mockSetAgent.mockClear();
@@ -1335,8 +1338,8 @@ describe("CreateIssueModal", () => {
       const user = userEvent.setup();
       const onClose = vi.fn();
       const view = renderManualPanel(onClose);
-      await user.type(screen.getByPlaceholderText("Issue title"), "Draft A");
-      fireEvent.keyDown(screen.getByPlaceholderText("Issue title"), {
+      await user.type(screen.getByPlaceholderText("Add description..."), "Draft A");
+      fireEvent.keyDown(screen.getByPlaceholderText("Add description..."), {
         key: "Enter",
         metaKey: true,
       });
@@ -1433,7 +1436,7 @@ describe("CreateIssueModal", () => {
     it("disables Create and shows Uploading… while an upload is in flight", async () => {
       const user = userEvent.setup();
       renderManual();
-      await user.type(screen.getByPlaceholderText("Issue title"), "Has a screenshot");
+      await user.type(screen.getByPlaceholderText("Add description..."), "Has a screenshot");
 
       const pending = startPendingUpload();
 
@@ -1461,7 +1464,7 @@ describe("CreateIssueModal", () => {
     it("never submits manual create from plain Enter in the title", async () => {
       const user = userEvent.setup();
       renderManual();
-      const title = screen.getByPlaceholderText("Issue title");
+      const title = screen.getByPlaceholderText("Add description...");
       await user.type(title, "Has a screenshot");
 
       fireEvent.keyDown(title, { key: "Enter" });
@@ -1472,7 +1475,7 @@ describe("CreateIssueModal", () => {
     it("blocks the title send chord while an upload is in flight", async () => {
       const user = userEvent.setup();
       renderManual();
-      const title = screen.getByPlaceholderText("Issue title");
+      const title = screen.getByPlaceholderText("Add description...");
       await user.type(title, "Has a screenshot");
 
       startPendingUpload();
@@ -1488,7 +1491,7 @@ describe("CreateIssueModal", () => {
       const user = userEvent.setup();
       const onSwitchMode = vi.fn();
       renderManual(onSwitchMode);
-      await user.type(screen.getByPlaceholderText("Issue title"), "Has a screenshot");
+      await user.type(screen.getByPlaceholderText("Add description..."), "Has a screenshot");
 
       startPendingUpload();
 
@@ -1518,7 +1521,7 @@ describe("CreateIssueModal", () => {
     it("creates from the send chord in the title", async () => {
       const user = userEvent.setup();
       renderManual();
-      const title = screen.getByPlaceholderText("Issue title");
+      const title = screen.getByPlaceholderText("Add description...");
       await user.type(title, "Shortcut from title");
 
       fireEvent.keyDown(title, { key: "Enter", metaKey: true });
@@ -1532,7 +1535,6 @@ describe("CreateIssueModal", () => {
     it("creates from the send chord in the description", async () => {
       const user = userEvent.setup();
       renderManual();
-      await user.type(screen.getByPlaceholderText("Issue title"), "Shortcut from body");
       const description = screen.getByPlaceholderText("Add description...");
       await user.type(description, "Body text");
 
@@ -1541,7 +1543,7 @@ describe("CreateIssueModal", () => {
       await waitFor(() => expect(mockCreateIssue).toHaveBeenCalledTimes(1));
       expect(mockCreateIssue).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: "Shortcut from body",
+          title: "Body text",
           description: "Body text",
         }),
       );
@@ -1550,18 +1552,16 @@ describe("CreateIssueModal", () => {
     it("leaves plain Enter in the description as a newline, not a create", async () => {
       const user = userEvent.setup();
       renderManual();
-      await user.type(screen.getByPlaceholderText("Issue title"), "Still typing");
+      await user.type(screen.getByPlaceholderText("Add description..."), "Still typing");
 
       fireEvent.keyDown(screen.getByPlaceholderText("Add description..."), { key: "Enter" });
       await Promise.resolve();
       expect(mockCreateIssue).not.toHaveBeenCalled();
     });
 
-    it("focuses the title instead of silently doing nothing when it is empty", async () => {
-      const user = userEvent.setup();
+    it("focuses the description instead of silently doing nothing when it is empty", async () => {
       renderManual();
       const description = screen.getByPlaceholderText("Add description...");
-      await user.type(description, "Body but no title");
 
       fireEvent.keyDown(description, { key: "Enter", metaKey: true });
 
@@ -1569,7 +1569,7 @@ describe("CreateIssueModal", () => {
       expect(mockCreateIssue).not.toHaveBeenCalled();
       // The shortcut path can't rely on the button's tooltip, so it has to say
       // where the problem is some other way.
-      expect(screen.getByPlaceholderText("Issue title")).toHaveFocus();
+      expect(screen.getByPlaceholderText("Add description...")).toHaveFocus();
     });
 
     it("creates once when the chord is pressed twice in the same tick", async () => {
@@ -1580,7 +1580,7 @@ describe("CreateIssueModal", () => {
         () => new Promise((resolve) => { release = resolve; }),
       );
       renderManual();
-      const title = screen.getByPlaceholderText("Issue title");
+      const title = screen.getByPlaceholderText("Add description...");
       await user.type(title, "Double tap");
 
       // Both presses are dispatched inside ONE act, so React cannot re-render
@@ -1611,7 +1611,7 @@ describe("CreateIssueModal", () => {
       expect(document.querySelector("[data-slot='shortcut-keycaps']")).toBeInTheDocument();
 
       // And the affordance survives the empty → filled transition.
-      await user.type(screen.getByPlaceholderText("Issue title"), "Now valid");
+      await user.type(screen.getByPlaceholderText("Add description..."), "Now valid");
       expect(screen.getByRole("button", { name: "Create Issue" })).toBeInTheDocument();
       expect(document.querySelector("[data-slot='shortcut-keycaps']")).toBeInTheDocument();
     });

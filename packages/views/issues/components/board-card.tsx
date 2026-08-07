@@ -188,7 +188,10 @@ export const BoardCardContent = memo(function BoardCardContent({
       </div>
 
       {/* Row 2: Title */}
-      <p className="mt-1 text-body font-medium leading-snug line-clamp-2">
+      <p
+        className="mt-1 truncate text-body font-medium leading-snug"
+        title={issue.title}
+      >
         {issue.title}
       </p>
 

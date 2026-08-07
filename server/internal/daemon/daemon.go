@@ -6113,6 +6113,11 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if task.QuickCreateModel != "" {
 		model = task.QuickCreateModel
 	}
+	// Manual-create / comment-composer overrides win the same way for
+	// issue-bound tasks.
+	if task.RunModelOverride != "" {
+		model = task.RunModelOverride
+	}
 	thinkingLevel := ""
 	serviceTier := ""
 	if task.Agent != nil {
@@ -6121,6 +6126,9 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	}
 	if task.QuickCreateThinkingLevel != "" {
 		thinkingLevel = task.QuickCreateThinkingLevel
+	}
+	if task.RunThinkingLevelOverride != "" {
+		thinkingLevel = task.RunThinkingLevelOverride
 	}
 	// service_tier is catalog-owned and currently Codex-only. As with
 	// thinking_level, stale or incompatible persisted values degrade to the

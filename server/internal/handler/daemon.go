@@ -2501,6 +2501,18 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		}
 	}
 
+	// Issue-bound tasks carry per-run model / thinking-level overrides from the
+	// manual create or comment composer in the same context JSONB as head_sha.
+	// Decode them for every issue task so the daemon can apply them to the
+	// provider CLI exactly like quick-create overrides.
+	if task.IssueID.Valid && task.Context != nil {
+		var overrides service.TaskRunOverrides
+		if json.Unmarshal(task.Context, &overrides) == nil {
+			resp.RunModelOverride = overrides.Model
+			resp.RunThinkingLevelOverride = overrides.ThinkingLevel
+		}
+	}
+
 	// Workspace isolation check: the daemon uses this response's workspace_id
 	// as the only authority for MULTICA_WORKSPACE_ID in the agent env. An
 	// empty value would make the CLI silently fall back to the user-global

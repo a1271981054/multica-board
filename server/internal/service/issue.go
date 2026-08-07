@@ -77,6 +77,10 @@ type IssueCreateParams struct {
 	// Stage groups this issue into an ordered barrier group under its parent
 	// (NULL = unstaged). See issue_child_done.go for the staged-barrier wake.
 	Stage pgtype.Int4
+	// Optional per-run overrides applied when the created issue triggers an
+	// agent/squad task immediately.
+	ModelOverride         string
+	ThinkingLevelOverride string
 }
 
 // IssueCreateOpts groups optional knobs for IssueService.Create. Most
@@ -328,7 +332,10 @@ func (s *IssueService) Create(ctx context.Context, p IssueCreateParams, opts Iss
 
 	s.publishIssueCreated(issue, attachments, labels, p.CreatorType, actorID, opts)
 	s.captureCreatedAnalytics(issue, p.CreatorType, actorID, opts)
-	s.maybeEnqueueOnAssign(ctx, issue, p.CreatorType, actorID)
+	s.maybeEnqueueOnAssign(ctx, issue, p.CreatorType, actorID, TaskRunOverrides{
+		Model:         p.ModelOverride,
+		ThinkingLevel: p.ThinkingLevelOverride,
+	})
 
 	return IssueCreateResult{Issue: issue, Attachments: attachments, Labels: labels}, nil
 }
@@ -478,19 +485,19 @@ func classifyOrigin(issue db.Issue, opts IssueCreateOpts) (source, taskID, autop
 	}
 }
 
-func (s *IssueService) maybeEnqueueOnAssign(ctx context.Context, issue db.Issue, creatorType, actorID string) {
+func (s *IssueService) maybeEnqueueOnAssign(ctx context.Context, issue db.Issue, creatorType, actorID string, overrides TaskRunOverrides) {
 	if !issue.AssigneeType.Valid || !issue.AssigneeID.Valid {
 		return
 	}
 	if s.shouldEnqueueAgentTask(ctx, issue) {
-		if _, err := s.TaskService.EnqueueTaskForIssue(ctx, issue); err != nil {
+		if _, err := s.TaskService.EnqueueTaskForIssueWithRunOverrides(ctx, issue, overrides); err != nil {
 			slog.Warn("enqueue agent task on create failed",
 				"issue_id", util.UUIDToString(issue.ID),
 				"error", err)
 		}
 	}
 	if s.shouldEnqueueSquadLeaderOnAssign(ctx, issue) {
-		s.enqueueSquadLeaderTask(ctx, issue, pgtype.UUID{}, creatorType, actorID)
+		s.enqueueSquadLeaderTask(ctx, issue, pgtype.UUID{}, creatorType, actorID, overrides)
 	}
 }
 
@@ -546,7 +553,7 @@ func (s *IssueService) isSquadLeaderReady(ctx context.Context, issue db.Issue) b
 	return ready
 }
 
-func (s *IssueService) enqueueSquadLeaderTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, authorType, authorID string) {
+func (s *IssueService) enqueueSquadLeaderTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, authorType, authorID string, overrides TaskRunOverrides) {
 	squad, err := s.Queries.GetSquadInWorkspace(ctx, db.GetSquadInWorkspaceParams{
 		ID:          issue.AssigneeID,
 		WorkspaceID: issue.WorkspaceID,
@@ -563,7 +570,7 @@ func (s *IssueService) enqueueSquadLeaderTask(ctx context.Context, issue db.Issu
 	if err != nil || hasPending {
 		return
 	}
-	if _, err := s.TaskService.EnqueueTaskForSquadLeader(ctx, issue, squad.LeaderID, squad.ID, triggerCommentID); err != nil {
+	if _, err := s.TaskService.EnqueueTaskForSquadLeaderWithRunOverrides(ctx, issue, squad.LeaderID, squad.ID, triggerCommentID, overrides); err != nil {
 		slog.Warn("enqueue squad leader task on create failed",
 			"issue_id", util.UUIDToString(issue.ID),
 			"squad_id", util.UUIDToString(squad.ID),

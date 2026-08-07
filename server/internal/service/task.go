@@ -945,7 +945,18 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 	if len(triggerCommentID) > 0 {
 		commentID = triggerCommentID[0]
 	}
-	return s.enqueueIssueTask(ctx, issue, commentID, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueIssueTask(ctx, issue, commentID, false, "", pgtype.UUID{}, pgtype.UUID{}, TaskRunOverrides{})
+}
+
+// EnqueueTaskForIssueWithRunOverrides is the manual-create variant of
+// EnqueueTaskForIssue: the task carries the per-run model / thinking-level
+// overrides the user picked in the create dialog.
+func (s *TaskService) EnqueueTaskForIssueWithRunOverrides(ctx context.Context, issue db.Issue, overrides TaskRunOverrides, triggerCommentID ...pgtype.UUID) (db.AgentTaskQueue, error) {
+	var commentID pgtype.UUID
+	if len(triggerCommentID) > 0 {
+		commentID = triggerCommentID[0]
+	}
+	return s.enqueueIssueTask(ctx, issue, commentID, false, "", pgtype.UUID{}, pgtype.UUID{}, overrides)
 }
 
 // EnqueueTaskForIssueWithHandoff is the assign/promote variant that carries a
@@ -955,7 +966,7 @@ func (s *TaskService) EnqueueTaskForIssue(ctx context.Context, issue db.Issue, t
 // member who performed the assign/promote and becomes the accountable human for
 // the run (MUL-4302 §4); invalid when the caller has no member actor.
 func (s *TaskService) EnqueueTaskForIssueWithHandoff(ctx context.Context, issue db.Issue, handoffNote string, actorUserID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, handoffNote, actorUserID, pgtype.UUID{})
+	return s.enqueueIssueTask(ctx, issue, pgtype.UUID{}, false, handoffNote, actorUserID, pgtype.UUID{}, TaskRunOverrides{})
 }
 
 // enqueueIssueTask is the shared implementation behind EnqueueTaskForIssue
@@ -1003,11 +1014,11 @@ func (s *TaskService) ResolveIssueReviewSHAParam(ctx context.Context, issueID pg
 	return headShaText(s.ResolveIssueReviewSHA(ctx, issueID))
 }
 
-func (s *TaskService) enqueueIssueTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, nil, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID)
+func (s *TaskService) enqueueIssueTask(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
+	return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, nil, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, overrides)
 }
 
-func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
+func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue db.Issue, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
 	if !issue.AssigneeID.Valid {
 		slog.Error("task enqueue failed", "issue_id", util.UUIDToString(issue.ID), "error", "issue has no assignee")
 		return db.AgentTaskQueue{}, fmt.Errorf("issue has no assignee")
@@ -1044,25 +1055,27 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 	runtimeMCPOverlay := s.buildRuntimeMCPOverlay(ctx, originatorUserID, agent)
 	attrSource, attrDelegatedFrom, attrEvidenceKind, attrEvidenceRef := attributionCreateParams(attr)
 	task, err := s.Queries.CreateAgentTask(ctx, db.CreateAgentTaskParams{
-		AgentID:              issue.AssigneeID,
-		RuntimeID:            agent.RuntimeID,
-		IssueID:              issue.ID,
-		Priority:             priorityToInt(issue.Priority),
-		TriggerCommentID:     triggerCommentID,
-		CoalescedCommentIds:  coalescedCommentIDs,
-		TriggerSummary:       s.buildCommentTriggerSummary(ctx, issue.WorkspaceID, triggerCommentID),
-		ForceFreshSession:    pgtype.Bool{Bool: forceFreshSession, Valid: forceFreshSession},
-		HandoffNote:          pgtype.Text{String: handoffNote, Valid: handoffNote != ""},
-		OriginatorUserID:     originatorUserID,
-		AccountableUserID:    attr.AccountableUserID,
-		RuleVersionID:        attr.RuleVersionID,
-		RerunOfTaskID:        rerunOfTaskID,
-		RuntimeMcpOverlay:    runtimeMCPOverlay.Overlay,
-		RuntimeConnectedApps: runtimeMCPOverlay.ConnectedApps,
-		OriginatorSource:     attrSource,
-		DelegatedFromTaskID:  attrDelegatedFrom,
-		TriggerEvidenceKind:  attrEvidenceKind,
-		TriggerEvidenceRefID: attrEvidenceRef,
+		AgentID:               issue.AssigneeID,
+		RuntimeID:             agent.RuntimeID,
+		IssueID:               issue.ID,
+		Priority:              priorityToInt(issue.Priority),
+		TriggerCommentID:      triggerCommentID,
+		CoalescedCommentIds:   coalescedCommentIDs,
+		TriggerSummary:        s.buildCommentTriggerSummary(ctx, issue.WorkspaceID, triggerCommentID),
+		ForceFreshSession:     pgtype.Bool{Bool: forceFreshSession, Valid: forceFreshSession},
+		HandoffNote:           pgtype.Text{String: handoffNote, Valid: handoffNote != ""},
+		OriginatorUserID:      originatorUserID,
+		AccountableUserID:     attr.AccountableUserID,
+		RuleVersionID:         attr.RuleVersionID,
+		RerunOfTaskID:         rerunOfTaskID,
+		RuntimeMcpOverlay:     runtimeMCPOverlay.Overlay,
+		RuntimeConnectedApps:  runtimeMCPOverlay.ConnectedApps,
+		OriginatorSource:      attrSource,
+		DelegatedFromTaskID:   attrDelegatedFrom,
+		TriggerEvidenceKind:   attrEvidenceKind,
+		TriggerEvidenceRefID:  attrEvidenceRef,
+		ModelOverride:         pgtype.Text{String: overrides.Model, Valid: overrides.Model != ""},
+		ThinkingLevelOverride: pgtype.Text{String: overrides.ThinkingLevel, Valid: overrides.ThinkingLevel != ""},
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -1093,13 +1106,23 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 // Unlike EnqueueTaskForIssue, this takes an explicit agent ID rather than
 // deriving it from the issue assignee.
 func (s *TaskService) EnqueueTaskForMention(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, TaskRunOverrides{})
+}
+
+// EnqueueTaskForMentionWithRunOverrides carries the composer's model /
+// thinking-level overrides into the mentioned agent's run.
+func (s *TaskService) EnqueueTaskForMentionWithRunOverrides(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, overrides)
 }
 
 // EnqueueTaskForThreadParent creates a queued task for the agent who authored
 // the direct parent comment a member replied to.
 func (s *TaskService) EnqueueTaskForThreadParent(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, TaskRunOverrides{})
+}
+
+func (s *TaskService) EnqueueTaskForThreadParentWithRunOverrides(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTask(ctx, issue, agentID, triggerCommentID, false, pgtype.UUID{}, false, "", pgtype.UUID{}, pgtype.UUID{}, overrides)
 }
 
 // EnqueueTaskForSquadLeader is the leader-role variant of EnqueueTaskForMention.
@@ -1114,7 +1137,11 @@ func (s *TaskService) EnqueueTaskForThreadParent(ctx context.Context, issue db.I
 // leader task was triggered (comment @squad, issue assign, autopilot,
 // sub-issue done callback). See migration 127.
 func (s *TaskService) EnqueueTaskForSquadLeader(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, triggerCommentID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, leaderID, triggerCommentID, true, squadID, false, "", pgtype.UUID{}, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, leaderID, triggerCommentID, true, squadID, false, "", pgtype.UUID{}, pgtype.UUID{}, TaskRunOverrides{})
+}
+
+func (s *TaskService) EnqueueTaskForSquadLeaderWithRunOverrides(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, triggerCommentID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTask(ctx, issue, leaderID, triggerCommentID, true, squadID, false, "", pgtype.UUID{}, pgtype.UUID{}, overrides)
 }
 
 // EnqueueTaskForSquadLeaderWithHandoff is the assign/promote variant carrying a
@@ -1123,14 +1150,14 @@ func (s *TaskService) EnqueueTaskForSquadLeader(ctx context.Context, issue db.Is
 // performed the assign/promote and becomes the accountable human (MUL-4302 §4);
 // invalid when the caller has no member actor.
 func (s *TaskService) EnqueueTaskForSquadLeaderWithHandoff(ctx context.Context, issue db.Issue, leaderID pgtype.UUID, squadID pgtype.UUID, handoffNote string, actorUserID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTask(ctx, issue, leaderID, pgtype.UUID{}, true, squadID, false, handoffNote, actorUserID, pgtype.UUID{})
+	return s.enqueueMentionTask(ctx, issue, leaderID, pgtype.UUID{}, true, squadID, false, handoffNote, actorUserID, pgtype.UUID{}, TaskRunOverrides{})
 }
 
-func (s *TaskService) enqueueMentionTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID)
+func (s *TaskService) enqueueMentionTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, nil, isLeader, squadID, forceFreshSession, handoffNote, actorUserID, rerunOfTaskID, overrides)
 }
 
-func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
+func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, forceFreshSession bool, handoffNote string, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID, overrides TaskRunOverrides) (db.AgentTaskQueue, error) {
 	agent, err := s.Queries.GetAgent(ctx, agentID)
 	if err != nil {
 		slog.Error("mention task enqueue failed: agent not found", "issue_id", util.UUIDToString(issue.ID), "agent_id", util.UUIDToString(agentID), "error", err)
@@ -1161,27 +1188,29 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 	runtimeMCPOverlay := s.buildRuntimeMCPOverlay(ctx, originatorUserID, agent)
 	attrSource, attrDelegatedFrom, attrEvidenceKind, attrEvidenceRef := attributionCreateParams(attr)
 	task, err := s.Queries.CreateAgentTask(ctx, db.CreateAgentTaskParams{
-		AgentID:              agentID,
-		RuntimeID:            agent.RuntimeID,
-		IssueID:              issue.ID,
-		Priority:             priorityToInt(issue.Priority),
-		TriggerCommentID:     triggerCommentID,
-		CoalescedCommentIds:  coalescedCommentIDs,
-		TriggerSummary:       s.buildCommentTriggerSummary(ctx, issue.WorkspaceID, triggerCommentID),
-		IsLeaderTask:         pgtype.Bool{Bool: isLeader, Valid: isLeader},
-		ForceFreshSession:    pgtype.Bool{Bool: forceFreshSession, Valid: forceFreshSession},
-		HandoffNote:          pgtype.Text{String: handoffNote, Valid: handoffNote != ""},
-		SquadID:              squadID,
-		OriginatorUserID:     originatorUserID,
-		AccountableUserID:    attr.AccountableUserID,
-		RuleVersionID:        attr.RuleVersionID,
-		RerunOfTaskID:        rerunOfTaskID,
-		RuntimeMcpOverlay:    runtimeMCPOverlay.Overlay,
-		RuntimeConnectedApps: runtimeMCPOverlay.ConnectedApps,
-		OriginatorSource:     attrSource,
-		DelegatedFromTaskID:  attrDelegatedFrom,
-		TriggerEvidenceKind:  attrEvidenceKind,
-		TriggerEvidenceRefID: attrEvidenceRef,
+		AgentID:               agentID,
+		RuntimeID:             agent.RuntimeID,
+		IssueID:               issue.ID,
+		Priority:              priorityToInt(issue.Priority),
+		TriggerCommentID:      triggerCommentID,
+		CoalescedCommentIds:   coalescedCommentIDs,
+		TriggerSummary:        s.buildCommentTriggerSummary(ctx, issue.WorkspaceID, triggerCommentID),
+		IsLeaderTask:          pgtype.Bool{Bool: isLeader, Valid: isLeader},
+		ForceFreshSession:     pgtype.Bool{Bool: forceFreshSession, Valid: forceFreshSession},
+		HandoffNote:           pgtype.Text{String: handoffNote, Valid: handoffNote != ""},
+		SquadID:               squadID,
+		OriginatorUserID:      originatorUserID,
+		AccountableUserID:     attr.AccountableUserID,
+		RuleVersionID:         attr.RuleVersionID,
+		RerunOfTaskID:         rerunOfTaskID,
+		RuntimeMcpOverlay:     runtimeMCPOverlay.Overlay,
+		RuntimeConnectedApps:  runtimeMCPOverlay.ConnectedApps,
+		OriginatorSource:      attrSource,
+		DelegatedFromTaskID:   attrDelegatedFrom,
+		TriggerEvidenceKind:   attrEvidenceKind,
+		TriggerEvidenceRefID:  attrEvidenceRef,
+		ModelOverride:         pgtype.Text{String: overrides.Model, Valid: overrides.Model != ""},
+		ThinkingLevelOverride: pgtype.Text{String: overrides.ThinkingLevel, Valid: overrides.ThinkingLevel != ""},
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -1310,6 +1339,15 @@ type QuickCreateContext struct {
 	// pass `--parent <uuid>` so the sub-issue relationship is preserved
 	// across the manual→agent mode flip.
 	ParentIssueID string `json:"parent_issue_id,omitempty"`
+}
+
+// TaskRunOverrides carries per-run model / thinking-level overrides chosen in
+// the manual create or comment composer. They are stamped into the task's
+// context JSONB so the daemon claim handler can surface them to the provider
+// CLI for the run. Empty values mean "follow the agent's persisted config".
+type TaskRunOverrides struct {
+	Model         string `json:"model,omitempty"`
+	ThinkingLevel string `json:"thinking_level,omitempty"`
 }
 
 // QuickCreateContextType marks a task as a quick-create job.
@@ -4286,9 +4324,9 @@ func (s *TaskService) promoteNewestSurvivingComment(ctx context.Context, ids []p
 func (s *TaskService) enqueueRerunTask(ctx context.Context, issue db.Issue, agentID pgtype.UUID, triggerCommentID pgtype.UUID, coalescedCommentIDs []pgtype.UUID, isLeader bool, squadID pgtype.UUID, actorUserID pgtype.UUID, rerunOfTaskID pgtype.UUID) (db.AgentTaskQueue, error) {
 	if issue.AssigneeType.String == "agent" && issue.AssigneeID.Valid &&
 		util.UUIDToString(issue.AssigneeID) == util.UUIDToString(agentID) {
-		return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, coalescedCommentIDs, true, "", actorUserID, rerunOfTaskID)
+		return s.enqueueIssueTaskWithCommentPlan(ctx, issue, triggerCommentID, coalescedCommentIDs, true, "", actorUserID, rerunOfTaskID, TaskRunOverrides{})
 	}
-	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID)
+	return s.enqueueMentionTaskWithCommentPlan(ctx, issue, agentID, triggerCommentID, coalescedCommentIDs, isLeader, squadID, true, "", actorUserID, rerunOfTaskID, TaskRunOverrides{})
 }
 
 // HandleFailedTasks runs the post-failure side effects for a batch of

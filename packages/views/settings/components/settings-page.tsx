@@ -16,6 +16,7 @@ import {
   Keyboard,
   ListTodo,
   Zap,
+  Download,
 } from "lucide-react";
 import { GitHubMark } from "./github-mark";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@multica/ui/components/ui/tabs";
@@ -38,9 +39,10 @@ import { LabelsTab } from "./labels-tab";
 import { PropertiesTab } from "./properties-tab";
 import { QuickActionsTab } from "./quick-actions-tab";
 import { KeyboardShortcutsTab } from "./keyboard-shortcuts-tab";
+import { SystemTab } from "./system-tab";
 import { useT } from "../../i18n";
 
-const ACCOUNT_TAB_KEYS = ["profile", "preferences", "shortcuts", "issue", "chat", "notifications", "tokens"] as const;
+const ACCOUNT_TAB_KEYS = ["profile", "preferences", "shortcuts", "issue", "chat", "notifications", "tokens", "system"] as const;
 const ACCOUNT_TAB_ICONS = {
   profile: User,
   preferences: SlidersHorizontal,
@@ -49,6 +51,7 @@ const ACCOUNT_TAB_ICONS = {
   chat: MessageCircle,
   notifications: Bell,
   tokens: Key,
+  system: Download,
 } as const;
 
 const WORKSPACE_TAB_KEYS = [
@@ -222,6 +225,7 @@ export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
           <TabsContent value="chat"><ChatTab /></TabsContent>
           <TabsContent value="notifications"><NotificationsTab /></TabsContent>
           <TabsContent value="tokens"><TokensTab /></TabsContent>
+          <TabsContent value="system"><SystemTab /></TabsContent>
           <TabsContent value="workspace"><WorkspaceTab /></TabsContent>
           <TabsContent value="repositories"><RepositoriesTab /></TabsContent>
           <TabsContent value="github"><GitHubTab /></TabsContent>

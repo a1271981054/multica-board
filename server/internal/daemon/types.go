@@ -108,6 +108,8 @@ type Task struct {
 	QuickCreateAttachmentIDs      []string               `json:"quick_create_attachment_ids,omitempty"`      // attachments uploaded in the quick-create prompt and bound by issue create
 	QuickCreateModel              string                 `json:"quick_create_model,omitempty"`               // per-run model override from the quick-create modal
 	QuickCreateThinkingLevel      string                 `json:"quick_create_thinking_level,omitempty"`      // per-run reasoning override from the quick-create modal
+	RunModelOverride              string                 `json:"run_model_override,omitempty"`               // per-run model override for issue-bound tasks (manual create / comment)
+	RunThinkingLevelOverride      string                 `json:"run_thinking_level_override,omitempty"`      // per-run reasoning override for issue-bound tasks (manual create / comment)
 	HandoffNote                   string                 `json:"handoff_note,omitempty"`                     // assignment handoff instruction; rendered into the opening prompt + issue_context.md
 
 	SquadID               string `json:"squad_id,omitempty"`                // when the picker was a squad, the squad's UUID; Agent is still the resolved leader

@@ -75,6 +75,9 @@ mkdir -p "$RESOURCES/bin" "$RESOURCES/web" "$RESOURCES/lib" "$RESOURCES/patch"
 board_info "Installing to $APP_DIR"
 cp -R "$TMP/bundle/"* "$RESOURCES/"
 chmod +x "$RESOURCES/bin/server" "$RESOURCES/bin/multica" "$RESOURCES/bin/migrate" "$RESOURCES/multica-board" 2>/dev/null || true
+# Keep the bundle writable by the installing user so in-app auto-update can
+# replace it without a sudo prompt on every release.
+chown -R "${SUDO_USER:-$USER}:admin" "$APP_DIR" 2>/dev/null || true
 ln -sf "$RESOURCES/multica-board" /usr/local/bin/multica-board
 
 board_ok "Installed Multica Board $VERSION"

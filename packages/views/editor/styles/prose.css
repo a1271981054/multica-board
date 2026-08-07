@@ -402,10 +402,20 @@
 
 /* Slash command pills */
 .rich-text-editor .slash-command {
+  display: inline-block;
   color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--primary) 32%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.05rem 0.4rem;
   font-weight: 600;
+  font-size: 0.875em;
+  line-height: 1.35;
   text-decoration: none;
   margin: 0 0.125rem;
+  white-space: nowrap;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 /* Strong / emphasis */

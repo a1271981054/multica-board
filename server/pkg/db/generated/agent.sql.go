@@ -1733,7 +1733,13 @@ VALUES (
     $11,
     CASE
         WHEN COALESCE($12::text, '') <> ''
-        THEN jsonb_build_object('head_sha', $12::text)
+          OR COALESCE($23::text, '') <> ''
+          OR COALESCE($24::text, '') <> ''
+        THEN jsonb_build_object(
+            'head_sha', COALESCE($12::text, ''),
+            'model', COALESCE($23::text, ''),
+            'thinking_level', COALESCE($24::text, '')
+        )
         ELSE NULL
     END,
     $13,
@@ -1751,28 +1757,30 @@ RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, c
 `
 
 type CreateAgentTaskParams struct {
-	AgentID              pgtype.UUID   `json:"agent_id"`
-	RuntimeID            pgtype.UUID   `json:"runtime_id"`
-	IssueID              pgtype.UUID   `json:"issue_id"`
-	Priority             int32         `json:"priority"`
-	TriggerCommentID     pgtype.UUID   `json:"trigger_comment_id"`
-	CoalescedCommentIds  []pgtype.UUID `json:"coalesced_comment_ids"`
-	TriggerSummary       pgtype.Text   `json:"trigger_summary"`
-	ForceFreshSession    pgtype.Bool   `json:"force_fresh_session"`
-	IsLeaderTask         pgtype.Bool   `json:"is_leader_task"`
-	HandoffNote          pgtype.Text   `json:"handoff_note"`
-	SquadID              pgtype.UUID   `json:"squad_id"`
-	HeadSha              pgtype.Text   `json:"head_sha"`
-	OriginatorUserID     pgtype.UUID   `json:"originator_user_id"`
-	AccountableUserID    pgtype.UUID   `json:"accountable_user_id"`
-	RuntimeMcpOverlay    []byte        `json:"runtime_mcp_overlay"`
-	RuntimeConnectedApps []byte        `json:"runtime_connected_apps"`
-	OriginatorSource     pgtype.Text   `json:"originator_source"`
-	DelegatedFromTaskID  pgtype.UUID   `json:"delegated_from_task_id"`
-	RuleVersionID        pgtype.UUID   `json:"rule_version_id"`
-	RerunOfTaskID        pgtype.UUID   `json:"rerun_of_task_id"`
-	TriggerEvidenceKind  pgtype.Text   `json:"trigger_evidence_kind"`
-	TriggerEvidenceRefID pgtype.UUID   `json:"trigger_evidence_ref_id"`
+	AgentID               pgtype.UUID   `json:"agent_id"`
+	RuntimeID             pgtype.UUID   `json:"runtime_id"`
+	IssueID               pgtype.UUID   `json:"issue_id"`
+	Priority              int32         `json:"priority"`
+	TriggerCommentID      pgtype.UUID   `json:"trigger_comment_id"`
+	CoalescedCommentIds   []pgtype.UUID `json:"coalesced_comment_ids"`
+	TriggerSummary        pgtype.Text   `json:"trigger_summary"`
+	ForceFreshSession     pgtype.Bool   `json:"force_fresh_session"`
+	IsLeaderTask          pgtype.Bool   `json:"is_leader_task"`
+	HandoffNote           pgtype.Text   `json:"handoff_note"`
+	SquadID               pgtype.UUID   `json:"squad_id"`
+	HeadSha               pgtype.Text   `json:"head_sha"`
+	OriginatorUserID      pgtype.UUID   `json:"originator_user_id"`
+	AccountableUserID     pgtype.UUID   `json:"accountable_user_id"`
+	RuntimeMcpOverlay     []byte        `json:"runtime_mcp_overlay"`
+	RuntimeConnectedApps  []byte        `json:"runtime_connected_apps"`
+	OriginatorSource      pgtype.Text   `json:"originator_source"`
+	DelegatedFromTaskID   pgtype.UUID   `json:"delegated_from_task_id"`
+	RuleVersionID         pgtype.UUID   `json:"rule_version_id"`
+	RerunOfTaskID         pgtype.UUID   `json:"rerun_of_task_id"`
+	TriggerEvidenceKind   pgtype.Text   `json:"trigger_evidence_kind"`
+	TriggerEvidenceRefID  pgtype.UUID   `json:"trigger_evidence_ref_id"`
+	ModelOverride         pgtype.Text   `json:"model_override"`
+	ThinkingLevelOverride pgtype.Text   `json:"thinking_level_override"`
 }
 
 // head_sha stamps the commit under review into the task's context JSONB so the
@@ -1806,6 +1814,8 @@ func (q *Queries) CreateAgentTask(ctx context.Context, arg CreateAgentTaskParams
 		arg.RerunOfTaskID,
 		arg.TriggerEvidenceKind,
 		arg.TriggerEvidenceRefID,
+		arg.ModelOverride,
+		arg.ThinkingLevelOverride,
 	)
 	var i AgentTaskQueue
 	err := row.Scan(

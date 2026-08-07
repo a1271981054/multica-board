@@ -20,6 +20,10 @@ export interface CreateIssueRequest {
   /** Issue-scoped label IDs to attach in the same transaction as the create.
    *  Unknown or non-issue ids are rejected by the server with 400. */
   label_ids?: string[];
+  /** Optional per-run model override for the task this create triggers. */
+  model?: string;
+  /** Optional per-run reasoning/effort override for the triggered task. */
+  thinking_level?: string;
 }
 
 export interface UpdateIssueRequest {

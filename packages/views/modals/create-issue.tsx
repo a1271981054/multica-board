@@ -49,8 +49,11 @@ import {
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@multica/ui/components/ui/tooltip";
 import { Button } from "@multica/ui/components/ui/button";
 import { Switch } from "@multica/ui/components/ui/switch";
-import { ContentEditor, type ContentEditorRef, TitleEditor, type TitleEditorRef, useFileDropZone, FileDropOverlay, useUploadGate, useComposerSubmit } from "../editor";
+import { ContentEditor, type ContentEditorRef, useFileDropZone, FileDropOverlay, useUploadGate, useComposerSubmit } from "../editor";
 import { useIssueCreateUploads } from "./use-issue-create-uploads";
+import { summarizeTitle } from "./title-summary";
+import { RunOverridePickers } from "../issues/components/run-override-pickers";
+import { useRunModelOverrides } from "../issues/hooks/use-run-model-overrides";
 import { useShortcut } from "@multica/core/shortcuts";
 import { ShortcutKeycaps } from "../common/shortcut-keycaps";
 import { StatusIcon, StatusPicker, PriorityIcon, PriorityPicker, StagePicker, AssigneePicker, StartDatePicker, DueDatePicker, LabelPicker } from "../issues/components";
@@ -226,8 +229,7 @@ export function ManualCreatePanel({
 
   const sendShortcut = useShortcut("send");
   const [title, setTitle] = useState(draft.manual.title);
-  const [formResetKey, setFormResetKey] = useState(0);
-  const titleEditorRef = useRef<TitleEditorRef>(null);
+  const [description, setDescription] = useState(draft.manual.description);
   const descEditorRef = useRef<ContentEditorRef>(null);
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } = useFileDropZone({
     onDrop: (files) => files.forEach((f) => descEditorRef.current?.uploadFile(f)),
@@ -288,6 +290,23 @@ export function ManualCreatePanel({
   // the ⋯ menu by default, mounted inline (as the popover anchor) only when it
   // has a value or the user just opened it from the menu.
   const [dueDatePickerOpen, setDueDatePickerOpen] = useState(false);
+  const runOverrides = useRunModelOverrides(
+    assigneeType,
+    assigneeId,
+    draft.manual.model,
+    draft.manual.thinkingLevel,
+  );
+  const manualRunOverrides = {
+    ...runOverrides,
+    setModel: (next: string) => {
+      runOverrides.setModel(next);
+      setManual({ model: next || undefined, thinkingLevel: undefined });
+    },
+    setThinkingLevel: (next: string) => {
+      runOverrides.setThinkingLevel(next);
+      setManual({ thinkingLevel: next || undefined });
+    },
+  };
   // Children live as full Issue objects — the picker always returns the whole
   // object, and we never need to hydrate from an ID the way we do for parent.
   const [childIssues, setChildIssues] = useState<Issue[]>([]);
@@ -350,12 +369,16 @@ export function ManualCreatePanel({
 
   // Sync field changes to the draft store — manual-only fields to the manual
   // slot, project / priority / due date to the shared slot.
-  const updateTitle = (v: string) => { setTitle(v); setManual({ title: v }); };
   const updateStatus = (v: IssueStatus) => { setStatus(v); setManual({ status: v }); };
   const updatePriority = (v: IssuePriority) => { setPriority(v); setShared({ priority: v }); };
   const updateAssignee = (type?: IssueAssigneeType, id?: string) => {
     setAssigneeType(type); setAssigneeId(id);
-    setManual({ assigneeType: type, assigneeId: id });
+    setManual({
+      assigneeType: type,
+      assigneeId: id,
+      model: undefined,
+      thinkingLevel: undefined,
+    });
   };
   const updateProject = (id?: string) => { setProjectId(id); setShared({ projectId: id }); };
   const updateStartDate = (v: string | null) => { setStartDate(v); setManual({ startDate: v }); };
@@ -419,6 +442,8 @@ export function ManualCreatePanel({
       startDate: null,
       labelIds: [],
       propertyValues: {},
+      model: undefined,
+      thinkingLevel: undefined,
     });
     setShared({
       priority: "none",
@@ -426,16 +451,15 @@ export function ManualCreatePanel({
       dueDate: null,
       attachments: [],
     });
+    setDescription("");
     descEditorRef.current?.clearContent();
-    setFormResetKey((key) => key + 1);
   };
 
   // Manual create runs through the shared await-then-render composer contract
   // (single-flight ref, submit-time upload re-check, lock+spin, await→boolean,
-  // clear only on acceptance). Manual is gated on the TITLE rather than the
-  // editor body — a title-only issue is valid — so `normalize` ignores the
-  // description markdown and feeds the title through as the empty-guard/content;
-  // the body is read separately inside onSubmit.
+  // clear only on acceptance). The description is the only required content;
+  // when the user leaves the title empty it is summarized from the description
+  // before submission (see summarizeTitle).
   // Stale-submit guard (MUL-5181 P0): the issue draft is a SINGLETON store
   // and the editors stay interactive during a request. Snapshot the draft's
   // object identity at submit; success clears ONLY an untouched draft —
@@ -452,7 +476,7 @@ export function ManualCreatePanel({
   const composer = useComposerSubmit({
     editorRef: descEditorRef,
     uploadGate: gate,
-    normalize: () => title.trim(),
+    normalize: () => description.trim(),
     onSubmit: async (): Promise<boolean> => {
       // Flush the description editor's pending debounce into the store BEFORE
       // snapshotting, so a late flush of pre-submit typing cannot masquerade
@@ -461,17 +485,20 @@ export function ManualCreatePanel({
       if (pendingDesc != null) setManual({ description: pendingDesc });
       submittedDraftRef.current = useIssueDraftStore.getState().draft;
       try {
-      const description = descEditorRef.current?.getMarkdown()?.trim() || undefined;
+      const finalDescription = descEditorRef.current?.getMarkdown()?.trim() || undefined;
+      const finalTitle = title.trim() || summarizeTitle(finalDescription ?? "");
       const activeAttachmentIds = draftAttachments
-        .filter((a) => contentReferencesAttachment(description ?? "", a))
+        .filter((a) => contentReferencesAttachment(finalDescription ?? "", a))
         .map((a) => a.id);
       const issue = await createIssueMutation.mutateAsync({
-        title: title.trim(),
-        description,
+        title: finalTitle,
+        description: finalDescription,
         status,
         priority,
         assignee_type: assigneeType,
         assignee_id: assigneeId,
+        ...(manualRunOverrides.model ? { model: manualRunOverrides.model } : {}),
+        ...(manualRunOverrides.thinkingLevel ? { thinking_level: manualRunOverrides.thinkingLevel } : {}),
         start_date: startDate || undefined,
         due_date: dueDate || undefined,
         attachment_ids: activeAttachmentIds.length > 0 ? activeAttachmentIds : undefined,
@@ -682,13 +709,13 @@ export function ManualCreatePanel({
     },
   });
 
-  // Button + shortcut entry point. The title-empty case can't rely on the
-  // button tooltip (shortcuts bypass the button), so focus the title to point
-  // at the fix; otherwise hand off to the composer (single-flight + gate live
-  // there).
+  // Button + shortcut entry point. The description-empty case can't rely on
+  // the button tooltip (shortcuts bypass the button), so focus the editor to
+  // point at the fix; otherwise hand off to the composer (single-flight + gate
+  // live there).
   const handleSubmit = () => {
-    if (!title.trim()) {
-      titleEditorRef.current?.focus();
+    if (!description.trim()) {
+      descEditorRef.current?.focus();
       return;
     }
     void composer.submit();
@@ -746,13 +773,13 @@ export function ManualCreatePanel({
 
   // One state for the button and the keyboard paths, so a rendered affordance
   // can never disagree with what `handleSubmit` will actually do.
-  const submitState: "submitting" | "uploading" | "missing_title" | "ready" =
+  const submitState: "submitting" | "uploading" | "missing_description" | "ready" =
     submitting
       ? "submitting"
       : gate.uploading
         ? "uploading"
-        : !title.trim()
-          ? "missing_title"
+        : !description.trim()
+          ? "missing_description"
           : "ready";
   const submitBusy = submitState === "submitting" || submitState === "uploading";
 
@@ -763,11 +790,11 @@ export function ManualCreatePanel({
       size="sm"
       onClick={handleSubmit}
       // Native `disabled` for the transient busy states, but `aria-disabled`
-      // for a missing title — a native-disabled button is not focusable, so
+      // for a missing description — a native-disabled button is not focusable, so
       // keyboard and screen-reader users could never reach the tooltip that
       // explains why nothing happens. `handleSubmit` is the real gate either way.
       disabled={submitBusy}
-      aria-disabled={submitState === "missing_title" || undefined}
+      aria-disabled={submitState === "missing_description" || undefined}
       aria-busy={submitBusy || undefined}
       // The Button base only dims/blocks on native `disabled`, so aria-disabled
       // would otherwise stay a fully lit, pressable-looking primary button.
@@ -844,28 +871,16 @@ export function ManualCreatePanel({
               </div>
             </div>
 
-            {/* Title */}
-            <div className="px-5 pb-2 shrink-0">
-              <TitleEditor
-                key={formResetKey}
-                ref={titleEditorRef}
-                autoFocus
-                defaultValue={draft.manual.title}
-                placeholder={t(($) => $.create_issue.title_placeholder)}
-                className="text-title font-semibold"
-                onChange={(v) => updateTitle(v)}
-                // Chord only — plain Enter still just ends title editing (#5532).
-                onSubmitShortcut={handleSubmit}
-              />
-            </div>
-
             {/* Description — takes remaining space */}
-            <div {...descDropZoneProps} className="relative flex flex-1 min-h-0 overflow-y-auto px-5">
+            <div {...descDropZoneProps} className="relative flex flex-1 min-h-0 overflow-y-auto px-5 pt-3">
               <ContentEditor
                 ref={descEditorRef}
                 defaultValue={draft.manual.description}
                 placeholder={t(($) => $.create_issue.description_placeholder)}
-                onUpdate={(md) => setManual({ description: md })}
+                onUpdate={(md) => {
+                  setDescription(md);
+                  setManual({ description: md });
+                }}
                 onSubmit={handleSubmit}
                 onUploadFile={handleUpload}
                 onUploadingChange={uploadGate.onUploadingChange}
@@ -875,6 +890,11 @@ export function ManualCreatePanel({
               {descDragOver && <FileDropOverlay />}
             </div>
 
+            {manualRunOverrides.enabled && (
+              <div className="flex items-center gap-1.5 px-4 pb-1 shrink-0 flex-wrap">
+                <RunOverridePickers overrides={manualRunOverrides} />
+              </div>
+            )}
 
             {/* Pre-trigger preview — a passive caption above the toolbar; reveals
                 when an agent assignee will pick the issue up. */}
@@ -1257,14 +1277,14 @@ export function ManualCreatePanel({
                   />
                   {t(($) => $.create_issue.create_another)}
                 </label>
-                {submitState === "missing_title" ? (
+                {submitState === "missing_description" ? (
                   <TooltipProvider delay={200}>
                     <Tooltip>
                       {/* No `<span>` wrapper needed now: aria-disabled leaves the
                           button focusable and hoverable, so it can anchor its own
                           tooltip. */}
                       <TooltipTrigger render={createButton} />
-                      <TooltipContent side="top">{t(($) => $.create_issue.title_required)}</TooltipContent>
+                      <TooltipContent side="top">{t(($) => $.create_issue.description_required)}</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 ) : (

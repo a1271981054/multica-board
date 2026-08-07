@@ -1455,6 +1455,10 @@ type CreateCommentRequest struct {
 	ParentID         *string  `json:"parent_id"`
 	AttachmentIDs    []string `json:"attachment_ids"`
 	SuppressAgentIDs []string `json:"suppress_agent_ids"`
+	// Optional per-run overrides applied to any agent task this comment
+	// triggers. Empty values follow the agent's persisted config.
+	Model         string `json:"model,omitempty"`
+	ThinkingLevel string `json:"thinking_level,omitempty"`
 }
 
 type CommentTriggerPreviewRequest struct {
@@ -1523,6 +1527,8 @@ type commentAgentTrigger struct {
 	Squad              *db.Squad
 	EscalationFallback *commentEscalationFallback
 	AlreadyPending     bool
+	// Per-run model / thinking-level overrides chosen in the comment composer.
+	Overrides service.TaskRunOverrides
 }
 
 type commentTriggerComputeOptions struct {
@@ -1912,7 +1918,10 @@ func (h *Handler) CreateComment(w http.ResponseWriter, r *http.Request) {
 	// The comment is already saved; a blocked mention must not fail the whole
 	// request. Surface the per-target outcomes so the client can show partial
 	// success instead of a silent no-op (MUL-4525 §2).
-	resp.TriggerOutcomes = h.triggerTasksForComment(r.Context(), issue, comment, parentComment, authorType, authorID, originatorUserID, delegationAuthority, suppressAgentIDs)
+	resp.TriggerOutcomes = h.triggerTasksForComment(r.Context(), issue, comment, parentComment, authorType, authorID, originatorUserID, delegationAuthority, suppressAgentIDs, service.TaskRunOverrides{
+		Model:         strings.TrimSpace(req.Model),
+		ThinkingLevel: strings.TrimSpace(req.ThinkingLevel),
+	})
 
 	writeJSON(w, http.StatusCreated, resp)
 }
@@ -1953,7 +1962,7 @@ func isNoteComment(content string) bool {
 // (MUL-4525 §2): blocked mentions from resolution plus queued / coalesced /
 // deferred / blocked from enqueue. UI-suppressed triggers (the user unchecked
 // them) are removed before enqueue and produce no outcome.
-func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID, delegationAuthorityUserID string, suppressAgentIDs []pgtype.UUID) []CommentTriggerOutcome {
+func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, comment db.Comment, parentComment *db.Comment, actorType, actorID, originatorUserID, delegationAuthorityUserID string, suppressAgentIDs []pgtype.UUID, overrides ...service.TaskRunOverrides) []CommentTriggerOutcome {
 	if isNoteComment(comment.Content) {
 		return nil
 	}
@@ -1963,6 +1972,11 @@ func (h *Handler) triggerTasksForComment(ctx context.Context, issue db.Issue, co
 		AutopilotDelegationAuthorityUserID: delegationAuthorityUserID,
 	})
 	triggers = filterSuppressedCommentAgentTriggers(triggers, suppressAgentIDs)
+	if len(overrides) > 0 {
+		for i := range triggers {
+			triggers[i].Overrides = overrides[0]
+		}
+	}
 	enqueued := h.enqueueCommentAgentTriggers(ctx, issue, comment.ID, triggers)
 	return commentTriggerOutcomes(targets, enqueued)
 }
@@ -2531,7 +2545,7 @@ func (h *Handler) enqueueSingleCommentTrigger(ctx context.Context, issue db.Issu
 	switch trigger.Source {
 	case commentTriggerSourceIssueAssignee:
 		if trigger.Squad != nil {
-			if _, err := h.TaskService.EnqueueTaskForSquadLeader(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID); err != nil {
+			if _, err := h.TaskService.EnqueueTaskForSquadLeaderWithRunOverrides(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID, trigger.Overrides); err != nil {
 				logCommentEnqueueFailure("enqueue squad leader task failed", err,
 					"issue_id", uuidToString(issue.ID),
 					"squad_id", uuidToString(trigger.Squad.ID),
@@ -2540,19 +2554,19 @@ func (h *Handler) enqueueSingleCommentTrigger(ctx context.Context, issue db.Issu
 			}
 			return nil
 		}
-		if _, err := h.TaskService.EnqueueTaskForIssue(ctx, issue, triggerCommentID); err != nil {
+		if _, err := h.TaskService.EnqueueTaskForIssueWithRunOverrides(ctx, issue, trigger.Overrides, triggerCommentID); err != nil {
 			slog.Warn("enqueue agent task on comment failed", "issue_id", uuidToString(issue.ID), "error", err)
 			return err
 		}
 	case commentTriggerSourceMentionSquadLeader:
-		if _, err := h.TaskService.EnqueueTaskForSquadLeader(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID); err != nil {
+		if _, err := h.TaskService.EnqueueTaskForSquadLeaderWithRunOverrides(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID, trigger.Overrides); err != nil {
 			logCommentEnqueueFailure("enqueue squad leader mention task failed", err,
 				"issue_id", uuidToString(issue.ID),
 				"agent_id", uuidToString(trigger.Agent.ID))
 			return err
 		}
 	case commentTriggerSourceMentionAgent:
-		if _, err := h.TaskService.EnqueueTaskForMention(ctx, issue, trigger.Agent.ID, triggerCommentID); err != nil {
+		if _, err := h.TaskService.EnqueueTaskForMentionWithRunOverrides(ctx, issue, trigger.Agent.ID, triggerCommentID, trigger.Overrides); err != nil {
 			logCommentEnqueueFailure("enqueue mention agent task failed", err,
 				"issue_id", uuidToString(issue.ID),
 				"agent_id", uuidToString(trigger.Agent.ID))
@@ -2562,9 +2576,9 @@ func (h *Handler) enqueueSingleCommentTrigger(ctx context.Context, issue db.Issu
 		var task db.AgentTaskQueue
 		var err error
 		if trigger.Source == commentTriggerSourceConversation && trigger.Squad != nil {
-			task, err = h.TaskService.EnqueueTaskForSquadLeader(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID)
+			task, err = h.TaskService.EnqueueTaskForSquadLeaderWithRunOverrides(ctx, issue, trigger.Agent.ID, trigger.Squad.ID, triggerCommentID, trigger.Overrides)
 		} else {
-			task, err = h.TaskService.EnqueueTaskForThreadParent(ctx, issue, trigger.Agent.ID, triggerCommentID)
+			task, err = h.TaskService.EnqueueTaskForThreadParentWithRunOverrides(ctx, issue, trigger.Agent.ID, triggerCommentID, trigger.Overrides)
 		}
 		if err != nil {
 			logCommentEnqueueFailure("enqueue routed comment agent task failed", err,
