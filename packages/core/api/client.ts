@@ -896,7 +896,7 @@ export class ApiClient {
     return this.fetch("/api/board/version");
   }
 
-  async startBoardUpdate(): Promise<{ started: boolean }> {
+  async startBoardUpdate(): Promise<{ started: boolean; message?: string }> {
     return this.fetch("/api/board/update", { method: "POST" });
   }
 

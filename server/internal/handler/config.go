@@ -66,6 +66,11 @@ type AppConfig struct {
 	// and empty for dev builds that aren't stamped via -X main.version.
 	ServerVersion string `json:"server_version,omitempty"`
 
+	// AllowParallelLocalDirectory mirrors the daemon-side opt-in switch so the
+	// create-issue UI can suppress the "one task per local directory" warning
+	// when the operator has explicitly enabled parallel same-directory runs.
+	AllowParallelLocalDirectory bool `json:"allow_parallel_local_directory,omitempty"`
+
 	// Local auto-login config for the distributed Multica Board app. Only
 	// emitted when MULTICA_BOARD_AUTO_LOGIN=true so anonymous /api/config
 	// callers never see verification credentials on normal deployments.
@@ -89,6 +94,10 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 	config.CdnSigned = h.CFSigner != nil
 	config.DaemonServerURL, config.DaemonAppURL = daemonSetupURLsFromEnv()
 	config.VCSIntegrationAvailable = h.cfg.VCSIntegrationEnabled
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("MULTICA_BOARD_ALLOW_PARALLEL_LOCAL_DIRECTORY"))) {
+	case "1", "true", "yes", "on":
+		config.AllowParallelLocalDirectory = true
+	}
 	config.FeatureFlags = featureflags.EvaluateFrontendPublicFlags(r.Context(), h.FeatureFlags)
 	if os.Getenv("MULTICA_BOARD_AUTO_LOGIN") == "true" {
 		config.AutoLoginEmail = os.Getenv("MULTICA_BOARD_AUTO_LOGIN_EMAIL")

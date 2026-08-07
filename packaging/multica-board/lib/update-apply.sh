@@ -16,6 +16,8 @@ write_status() {
     "$state" "$latest" "$message" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STATUS_FILE"
 }
 
+trap 'write_status error "更新失败"' ERR
+
 write_status applying "正在替换应用文件"
 
 # Stop services before swapping files; the web/backend processes may be

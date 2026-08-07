@@ -1,4 +1,4 @@
-import Mention from "@tiptap/extension-mention";
+import Mention, { type MentionOptions } from "@tiptap/extension-mention";
 import { mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import { SlashCommandView } from "./slash-command-view";
@@ -7,6 +7,21 @@ import { escapeMarkdownLabel } from "../utils/escape-markdown-label";
 
 export const SlashCommandExtension = Mention.extend({
   name: "slashCommand",
+
+  addOptions() {
+    const parent = this.parent?.() ?? ({} as MentionOptions);
+    return {
+      HTMLAttributes: parent.HTMLAttributes ?? {},
+      // Deleting a slash tag must remove the whole node without re-inserting
+      // Mention's default trigger character ("@").
+      deleteTriggerWithBackspace: true,
+      renderText: ({ node }: { node: { attrs: { label?: string } } }) =>
+        `/${formatSlashCommandLabel(node.attrs.label ?? "")}`,
+      renderHTML: parent.renderHTML,
+      suggestions: parent.suggestions ?? [],
+      suggestion: { ...(parent.suggestion ?? {}), char: "/" },
+    };
+  },
 
   addNodeView() {
     return ReactNodeViewRenderer(SlashCommandView);

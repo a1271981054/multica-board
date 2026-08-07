@@ -32,7 +32,12 @@ export function SystemTab() {
     setPhase("starting");
     setMessage("");
     try {
-      await api.startBoardUpdate();
+      const result = await api.startBoardUpdate();
+      if (!result.started) {
+        setPhase("error");
+        setMessage(result.message || "当前环境不支持自动更新");
+        return;
+      }
       setPhase("running");
       timerRef.current = setInterval(async () => {
         try {

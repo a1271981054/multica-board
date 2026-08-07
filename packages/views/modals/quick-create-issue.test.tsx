@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef, useState, type ReactNode } fro
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { configStore } from "@multica/core/config";
 
 const mockQuickCreateIssue = vi.hoisted(() => vi.fn());
 const mockSetLastActor = vi.hoisted(() => vi.fn());
@@ -444,6 +445,7 @@ function renderPanel(props: React.ComponentProps<typeof AgentCreatePanel>) {
 describe("AgentCreatePanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    configStore.setState({ allowParallelLocalDirectory: false });
     mockQuickCreateStore.lastActorType = null;
     mockQuickCreateStore.lastActorId = null;
     mockQuickCreateStore.lastProjectId = null;
@@ -501,6 +503,14 @@ describe("AgentCreatePanel", () => {
     ).toHaveValue("Persisted draft prompt");
   });
 
+  it("does not reopen with a leftover slash-only tag as the default prompt", () => {
+    mockIssueDraftStore.draft.agent.prompt = "[/目标](slash://skill/mode:目标)";
+    renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
+
+    expect(screen.getByPlaceholderText(/tell the agent what to do/i)).toHaveValue("");
+    expect(mockSetAgent).toHaveBeenCalledWith({ prompt: "" });
+  });
+
   it("inserts slash picks as slash command tags instead of plain text", async () => {
     const { container } = renderPanel({
       onClose: vi.fn(),
@@ -543,6 +553,32 @@ describe("AgentCreatePanel", () => {
     expect(
       screen.getByText("该项目绑定本地目录，同一目录同时只能运行一个任务"),
     ).toBeInTheDocument();
+  });
+
+  it("hides the local-directory warning when parallel execution is enabled", () => {
+    configStore.setState({ allowParallelLocalDirectory: true });
+    mockProjectResources.data = [
+      {
+        id: "res-1",
+        resource_type: "local_directory",
+        resource_ref: {
+          local_path: "/Users/test/project",
+          daemon_id: "codex-local",
+          label: "/Users/test/project",
+        },
+      },
+    ];
+
+    renderPanel({
+      onClose: vi.fn(),
+      isExpanded: false,
+      setIsExpanded: vi.fn(),
+      data: { project_id: "proj-1" },
+    });
+
+    expect(
+      screen.queryByText("该项目绑定本地目录，同一目录同时只能运行一个任务"),
+    ).not.toBeInTheDocument();
   });
 
   it("restores unfinished actor, project, priority, and due-date selections after remount", async () => {

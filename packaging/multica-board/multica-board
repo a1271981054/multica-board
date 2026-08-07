@@ -58,7 +58,10 @@ cmd_update() {
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' EXIT
   board_info "Downloading $asset"
-  curl -fsSL "$url" -o "$tmp/board.tar.gz"
+  if ! curl -fsSL "$url" -o "$tmp/board.tar.gz"; then
+    printf '{"status":"error","message":"下载更新包失败","updated_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$status_file"
+    board_fail "Download failed."
+  fi
   if curl -fsSL --max-time 15 "$BOARD_RELEASE_BASE/checksums.txt" -o "$tmp/checksums.txt" 2>/dev/null; then
     expected="$(awk -v f="$asset" '$2 == f {print $1}' "$tmp/checksums.txt" | head -1 || true)"
     if [[ -n "$expected" ]]; then

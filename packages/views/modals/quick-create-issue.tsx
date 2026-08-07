@@ -83,6 +83,7 @@ import {
   PickerEmpty,
 } from "../issues/components/pickers/property-picker";
 import { useAuthStore } from "@multica/core/auth";
+import { useConfigStore } from "@multica/core/config";
 import { memberListOptions } from "@multica/core/workspace/queries";
 import {
   ContentEditor,
@@ -102,6 +103,12 @@ import { SLASH_MODES } from "../editor/extensions/slash-command-modes";
 type ActorSelection =
   | { type: "agent"; id: string }
   | { type: "squad"; id: string };
+
+function isOnlySlashTags(markdown: string): boolean {
+  const trimmed = markdown.trim();
+  if (!trimmed) return false;
+  return /^(\[\/(?:[^\]]+)\]\(slash:\/\/skill\/[^)]+\)\s*)+$/.test(trimmed);
+}
 
 // AgentCreatePanel — agent-mode body of the create-issue dialog. Renders
 // only the inner content; the surrounding `<Dialog>` AND `<DialogContent>`
@@ -445,7 +452,14 @@ export function AgentCreatePanel({
     baseVersionCheck.state !== "ok" ||
     (usesExplicitFields && fieldVersionCheck.state !== "ok");
 
-  const initialPrompt = draft.agent.prompt || (data?.prompt as string) || "";
+  const allowParallelLocalDirectory = useConfigStore(
+    (s) => s.allowParallelLocalDirectory,
+  );
+  const staleSlashOnlyPrompt =
+    !data?.prompt && isOnlySlashTags(draft.agent.prompt);
+  const initialPrompt = staleSlashOnlyPrompt
+    ? ""
+    : draft.agent.prompt || (data?.prompt as string) || "";
   // The editor is uncontrolled — we read the latest markdown via the ref at
   // submit/switch time. `hasContent` mirrors emptiness so the Create button
   // can disable correctly without a controlled-input rerender on every keystroke.
@@ -469,6 +483,7 @@ export function AgentCreatePanel({
   });
 
   useEffect(() => {
+    if (staleSlashOnlyPrompt) setAgent({ prompt: "" });
     // Defer focus so it lands after the dialog's focus trap has settled —
     // otherwise the trap can bounce focus back to the first focusable header
     // button on the next tick.
@@ -724,7 +739,7 @@ export function AgentCreatePanel({
           </div>
         )}
 
-        {hasLocalDirectoryResource && (
+        {hasLocalDirectoryResource && !allowParallelLocalDirectory && (
           <div className="mx-5 mb-2 shrink-0 rounded-md border border-info/30 bg-info/5 px-3 py-2 text-caption text-info">
             该项目绑定本地目录，同一目录同时只能运行一个任务
           </div>

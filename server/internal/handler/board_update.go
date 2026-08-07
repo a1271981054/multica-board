@@ -43,6 +43,23 @@ func boardInstallDir() string {
 	return ""
 }
 
+func isBoardDevMode() bool {
+	if strings.TrimSpace(os.Getenv("MULTICA_BOARD_INSTALL_DIR")) != "" {
+		return false
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, candidate := range []string{
+			"/Applications/Multica Board.app/Contents/Resources",
+			filepath.Join(home, "Applications", "Multica Board.app", "Contents", "Resources"),
+		} {
+			if _, err := os.Stat(filepath.Join(candidate, "multica-board")); err == nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func boardVersionFile() string {
 	dir := boardInstallDir()
 	if dir == "" {
@@ -144,10 +161,20 @@ func (h *Handler) GetBoardVersion(w http.ResponseWriter, r *http.Request) {
 // background. The updater runs detached because it stops the web/backend
 // services while replacing the bundle.
 func (h *Handler) StartBoardUpdate(w http.ResponseWriter, r *http.Request) {
+	if isBoardDevMode() {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"started": false,
+			"message": "当前是开发模式，自动更新请使用安装包版本",
+		})
+		return
+	}
 	installDir := boardInstallDir()
 	cli := filepath.Join(installDir, "multica-board")
 	if _, err := os.Stat(cli); err != nil {
-		writeError(w, http.StatusBadRequest, "multica-board CLI not found")
+		writeJSON(w, http.StatusOK, map[string]any{
+			"started": false,
+			"message": "未找到 multica-board CLI，无法自动更新",
+		})
 		return
 	}
 	home := strings.TrimSpace(os.Getenv("MULTICA_BOARD_HOME"))
