@@ -456,7 +456,7 @@ describe("useIssueSurfaceController", () => {
       result.current.openCreateIssue({ status: "todo" });
     });
 
-    expect(openModal).toHaveBeenCalledWith("create-issue", expected);
+    expect(openModal).toHaveBeenCalledWith("quick-create-issue", expected);
   });
 
   it("clears surface selection when the view mode changes within the same scope", async () => {

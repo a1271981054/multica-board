@@ -269,7 +269,7 @@ describe("universal slash command suggestion", () => {
     const list = await universalItems(qc);
     const labels = list.map((item) => item.label);
 
-    expect(labels).toEqual(expect.arrayContaining(["目标", "计划模式", "deploy", "note"]));
+    expect(labels).toEqual(expect.arrayContaining(["目标模式", "计划模式", "deploy", "note"]));
   });
 
   it("filters across modes and skills by query", async () => {
@@ -278,7 +278,7 @@ describe("universal slash command suggestion", () => {
     });
 
     const list = await universalItems(qc, "目");
-    expect(list.map((item) => item.label)).toEqual(["目标"]);
+    expect(list.map((item) => item.label)).toEqual(["目标模式"]);
   });
 });
 

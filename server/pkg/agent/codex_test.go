@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -1298,6 +1299,24 @@ func TestCodexDeliverableOutputExcludesNarration(t *testing.T) {
 	}
 }
 
+func TestLogCodexSemanticActivityRateLimits(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	var last atomic.Int64
+
+	logCodexSemanticActivity(logger, "item/started:agentMessage", &last)
+	logCodexSemanticActivity(logger, "item/agentMessage/delta", &last)
+	if got, want := strings.Count(buf.String(), "codex semantic activity observed"), 1; got != want {
+		t.Fatalf("burst log count = %d, want %d; output:\n%s", got, want, buf.String())
+	}
+
+	last.Store(time.Now().Add(-2 * time.Second).UnixNano())
+	logCodexSemanticActivity(logger, "item/completed:agentMessage", &last)
+	if got, want := strings.Count(buf.String(), "codex semantic activity observed"), 2; got != want {
+		t.Fatalf("post-quiet log count = %d, want %d; output:\n%s", got, want, buf.String())
+	}
+}
+
 func TestCodexRawThreadStatusIdle(t *testing.T) {
 	t.Parallel()
 
@@ -1777,6 +1796,80 @@ func TestCodexStartOrResumeThreadSetsNameOnFreshThread(t *testing.T) {
 	}
 	if resumed {
 		t.Error("resumed should be false when no prior session is provided")
+	}
+}
+
+func TestCodexStartOrResumeThreadSetsNativeGoalOnFreshThread(t *testing.T) {
+	t.Parallel()
+
+	c, fs, _ := newTestCodexClient(t)
+
+	wait := drainRPCScript(t, c, fs, []rpcResponse{
+		{
+			method: "thread/start",
+			result: json.RawMessage(`{"thread":{"id":"thr_goal"}}`),
+		},
+		{
+			method: "thread/goal/set",
+			result: json.RawMessage(`{"goal":{"threadId":"thr_goal","objective":"修复这个 bug","status":"active"}}`),
+			assertFn: func(t *testing.T, params map[string]any) {
+				if params["threadId"] != "thr_goal" {
+					t.Errorf("threadId = %v, want thr_goal", params["threadId"])
+				}
+				if params["objective"] != "修复这个 bug" {
+					t.Errorf("objective = %v, want 修复这个 bug", params["objective"])
+				}
+			},
+		},
+	})
+	defer wait()
+
+	threadID, resumed, err := c.startOrResumeThread(
+		context.Background(),
+		ExecOptions{GoalObjective: "修复这个 bug"},
+		slog.Default(),
+	)
+	if err != nil {
+		t.Fatalf("startOrResumeThread: %v", err)
+	}
+	if threadID != "thr_goal" {
+		t.Errorf("threadID = %q, want thr_goal", threadID)
+	}
+	if resumed {
+		t.Error("resumed should be false when no prior session is provided")
+	}
+}
+
+func TestCodexStartOrResumeThreadSetsNativeGoalOnResume(t *testing.T) {
+	t.Parallel()
+
+	c, fs, _ := newTestCodexClient(t)
+
+	wait := drainRPCScript(t, c, fs, []rpcResponse{
+		{
+			method: "thread/resume",
+			result: json.RawMessage(`{"thread":{"id":"thr_prior"}}`),
+		},
+		{
+			method: "thread/goal/set",
+			result: json.RawMessage(`{"goal":{"threadId":"thr_prior","objective":"继续修"}}`),
+		},
+	})
+	defer wait()
+
+	threadID, resumed, err := c.startOrResumeThread(
+		context.Background(),
+		ExecOptions{ResumeSessionID: "thr_prior", GoalObjective: "继续修"},
+		slog.Default(),
+	)
+	if err != nil {
+		t.Fatalf("startOrResumeThread: %v", err)
+	}
+	if threadID != "thr_prior" {
+		t.Errorf("threadID = %q, want thr_prior", threadID)
+	}
+	if !resumed {
+		t.Error("resumed should be true when prior session is provided")
 	}
 }
 

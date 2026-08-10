@@ -62,6 +62,12 @@ type Task struct {
 	RuntimeID   string `json:"runtime_id"`
 	IssueID     string `json:"issue_id"`
 	WorkspaceID string `json:"workspace_id"`
+	// IssueTitle / IssueDescription mirror the linked issue's durable content
+	// so the daemon can seed a native Codex goal and re-discover slash-selected
+	// modes persisted in the issue body.
+	IssueTitle         string   `json:"issue_title,omitempty"`
+	IssueDescription   string   `json:"issue_description,omitempty"`
+	IssueSelectedModes []string `json:"issue_selected_modes,omitempty"`
 	// WorkspaceContext mirrors workspace.context (the per-workspace system
 	// prompt set in Settings → General). Server populates this on every claim
 	// regardless of task kind so the daemon can inject `## Workspace Context`

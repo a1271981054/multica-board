@@ -59,6 +59,7 @@ const (
 	// while keeping the fast-fail value (MUL-5542).
 	defaultCodexFirstTurnNoProgressTimeout = 60 * time.Second
 	defaultCodexHandshakeTimeout           = 30 * time.Second
+	codexGoalSetTimeout                    = 10 * time.Second
 	codexVersionDiagnosticTimeout          = 2 * time.Second
 	// codexGracefulShutdownTimeout bounds how long the lifecycle goroutine
 	// waits for codex to exit on its own after stdin is closed, before forcing
@@ -1055,6 +1056,7 @@ func (b *codexBackend) executeOnce(ctx context.Context, prompt string, opts Exec
 	// only what the daemon forwards to a chat/channel reply narrows (GH #6006).
 	var finalAnswer, lastAgentMessage string
 	var semanticObserved atomic.Bool
+	lastSemanticActivityLog := &atomic.Int64{}
 	turnNotificationGate := &codexTurnNotificationGate{}
 	firstItemWait := &codexFirstItemWaitObservation{}
 
@@ -1103,7 +1105,7 @@ func (b *codexBackend) executeOnce(ctx context.Context, prompt string, opts Exec
 		},
 		onSemanticActivity: func(description string) {
 			semanticObserved.Store(true)
-			b.cfg.Logger.Debug("codex semantic activity observed", "activity", description)
+			logCodexSemanticActivity(b.cfg.Logger, description, lastSemanticActivityLog)
 			trySendString(semanticActivityCh, description)
 		},
 		onTurnDone: func(aborted bool) {
@@ -1764,6 +1766,7 @@ func (c *codexClient) startOrResumeThread(ctx context.Context, opts ExecOptions,
 		resumeResult, err := c.request(ctx, "thread/resume", resumeParams)
 		if err == nil {
 			if threadID := extractThreadID(resumeResult); threadID != "" {
+				c.trySetThreadGoal(ctx, threadID, opts, logger)
 				return threadID, true, nil
 			}
 			logger.Warn("codex thread/resume returned no thread ID; falling back to thread/start", "prior_thread_id", priorThreadID)
@@ -1833,6 +1836,7 @@ func (c *codexClient) startOrResumeThread(ctx context.Context, opts ExecOptions,
 		"latency_ms", time.Since(c.threadStartStarted).Milliseconds(),
 	)
 	c.trySetThreadName(ctx, threadID, opts.ThreadName, logger)
+	c.trySetThreadGoal(ctx, threadID, opts, logger)
 	return threadID, false, nil
 }
 
@@ -1853,6 +1857,37 @@ func (c *codexClient) setThreadName(ctx context.Context, threadID, name string) 
 		"name":     name,
 	})
 	return err
+}
+
+// trySetThreadGoal attaches a native Codex goal to the thread when the task
+// selected goal mode. A failure is non-fatal: the run still proceeds with the
+// prompt-level Active Modes brief as a fallback.
+func (c *codexClient) trySetThreadGoal(ctx context.Context, threadID string, opts ExecOptions, logger *slog.Logger) {
+	objective := strings.TrimSpace(opts.GoalObjective)
+	if objective == "" {
+		return
+	}
+	// Best-effort and bounded: a stale or older app-server that does not
+	// support goals must not stall the turn behind an unanswered RPC.
+	goalCtx, cancel := context.WithTimeout(ctx, codexGoalSetTimeout)
+	defer cancel()
+	if _, err := c.request(goalCtx, "thread/goal/set", map[string]any{
+		"threadId":  threadID,
+		"objective": objective,
+	}); err != nil {
+		logger.Warn("codex thread/goal/set failed; continuing without native goal",
+			"task_id", c.cfg.TaskID,
+			"runtime_id", c.cfg.RuntimeID,
+			"thread_id", threadID,
+			"error", err,
+		)
+		return
+	}
+	logger.Info("codex thread goal set",
+		"task_id", c.cfg.TaskID,
+		"runtime_id", c.cfg.RuntimeID,
+		"thread_id", threadID,
+	)
 }
 
 // applyCodexReasoningEffort writes the per-agent thinking_level into a
@@ -2013,6 +2048,20 @@ func trySendString(ch chan<- string, value string) {
 	select {
 	case ch <- value:
 	default:
+	}
+}
+
+// logCodexSemanticActivity logs the high-frequency Codex progress stream at
+// most once per second per task. Every delta still feeds semanticActivityCh,
+// so the inactivity watchdog is unaffected; only the debug log volume drops.
+func logCodexSemanticActivity(logger *slog.Logger, activity string, lastLog *atomic.Int64) {
+	if logger == nil {
+		return
+	}
+	now := time.Now().UnixNano()
+	last := lastLog.Load()
+	if now-last >= int64(time.Second) && lastLog.CompareAndSwap(last, now) {
+		logger.Debug("codex semantic activity observed", "activity", activity)
 	}
 }
 

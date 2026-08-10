@@ -5594,6 +5594,13 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	defer stopPrepareLease()
 
 	selectedModes, selectedSkills := collectSelectedTools(task)
+	goalObjective := ""
+	for _, mode := range selectedModes {
+		if mode == "目标" {
+			goalObjective = taskGoalObjective(task)
+			break
+		}
+	}
 	if task.Agent != nil && len(selectedSkills) > 0 {
 		seen := make(map[string]struct{}, len(task.Agent.SkillRefs))
 		for _, ref := range task.Agent.SkillRefs {
@@ -6190,6 +6197,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 		Cwd:                       env.WorkDir,
 		Model:                     model,
 		ThreadName:                deriveTaskThreadName(task),
+		GoalObjective:             goalObjective,
 		ThreadSource:              codexThreadSourceForEnv(env),
 		Timeout:                   d.cfg.AgentTimeout,
 		SemanticInactivityTimeout: d.cfg.CodexSemanticInactivityTimeout,

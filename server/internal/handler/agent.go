@@ -296,6 +296,12 @@ type AgentTaskResponse struct {
 	RuntimeID   string `json:"runtime_id"`
 	IssueID     string `json:"issue_id"`
 	WorkspaceID string `json:"workspace_id"`
+	// IssueTitle / IssueDescription mirror the linked issue's durable content
+	// so the daemon can seed a native Codex goal and re-discover slash-selected
+	// modes persisted in the issue body or metadata.
+	IssueTitle         string   `json:"issue_title,omitempty"`
+	IssueDescription   string   `json:"issue_description,omitempty"`
+	IssueSelectedModes []string `json:"issue_selected_modes,omitempty"`
 	// WorkspaceContext is the workspace-level system prompt set in workspace
 	// settings (`workspace.context` DB column). Injected into the agent brief
 	// as `## Workspace Context` so every agent running in this workspace —

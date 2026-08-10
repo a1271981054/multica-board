@@ -6,14 +6,40 @@ import (
 )
 
 var slashToolRe = regexp.MustCompile(`\[/?([^\]\n]+)\]\(slash://skill/([^)\s]+)\)`)
+var slashToolAnyRe = regexp.MustCompile(`\[/?[^\]\n]*\]\(slash://skill/[^)\s]+\)`)
+
+// normalizeModeName maps user-facing aliases onto the canonical mode names
+// activeModesBrief understands. The board now labels the goal picker
+// `目标模式`; older tags and plain-text mentions still use `目标`.
+func normalizeModeName(name string) string {
+	if name == "目标模式" {
+		return "目标"
+	}
+	return name
+}
 
 func selectedToolsFromText(text string) (modes []string, skills []string) {
+	seenMode := map[string]struct{}{}
 	for _, m := range slashToolRe.FindAllStringSubmatch(text, -1) {
 		id := m[2]
 		if strings.HasPrefix(id, "mode:") {
-			modes = append(modes, strings.TrimPrefix(id, "mode:"))
+			mode := normalizeModeName(strings.TrimPrefix(id, "mode:"))
+			if mode == "" {
+				continue
+			}
+			if _, ok := seenMode[mode]; ok {
+				continue
+			}
+			seenMode[mode] = struct{}{}
+			modes = append(modes, mode)
 		} else if id != "" {
 			skills = append(skills, id)
+		}
+	}
+	if strings.Contains(text, "目标模式") {
+		if _, ok := seenMode["目标"]; !ok {
+			seenMode["目标"] = struct{}{}
+			modes = append(modes, "目标")
 		}
 	}
 	return modes, skills
@@ -31,9 +57,21 @@ func collectSelectedTools(task Task) (modes []string, skills []string) {
 	}
 	seenMode := map[string]struct{}{}
 	seenSkill := map[string]struct{}{}
+	for _, mode := range task.IssueSelectedModes {
+		mode = normalizeModeName(mode)
+		if mode == "" {
+			continue
+		}
+		if _, ok := seenMode[mode]; ok {
+			continue
+		}
+		seenMode[mode] = struct{}{}
+		modes = append(modes, mode)
+	}
 	for _, text := range texts {
 		ms, ss := selectedToolsFromText(text)
 		for _, m := range ms {
+			m = normalizeModeName(m)
 			if _, ok := seenMode[m]; !ok {
 				seenMode[m] = struct{}{}
 				modes = append(modes, m)
@@ -95,4 +133,34 @@ func activeModesBrief(modes []string) string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// taskGoalObjective picks the user-facing request to seed as a native Codex
+// goal. Prefer the trigger/chat/quick-create text so the goal objective is the
+// actual instruction; fall back to the issue title/body for assignment runs.
+func taskGoalObjective(task Task) string {
+	for _, text := range []string{
+		task.TriggerCommentContent,
+		task.ChatMessage,
+		task.QuickCreatePrompt,
+		task.HandoffNote,
+	} {
+		if trimmed := cleanGoalObjective(text); trimmed != "" {
+			return trimmed
+		}
+	}
+	if trimmed := cleanGoalObjective(task.IssueTitle); trimmed != "" {
+		return trimmed
+	}
+	if trimmed := cleanGoalObjective(task.IssueDescription); trimmed != "" {
+		return trimmed
+	}
+	return ""
+}
+
+// cleanGoalObjective strips slash-tool tags (mode/skill routing metadata) from
+// the text used as a native Codex goal objective so the visible objective reads
+// like the user's actual request instead of the routing tag.
+func cleanGoalObjective(text string) string {
+	return strings.TrimSpace(slashToolAnyRe.ReplaceAllString(text, ""))
 }

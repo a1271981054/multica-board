@@ -83,6 +83,24 @@ func parseIssueMetadata(raw []byte) map[string]any {
 	return util.JSONObjectOrEmpty(raw)
 }
 
+// dedupeSelectedModes preserves first-seen order for the mode list the daemon
+// claim carries alongside issue-bound tasks.
+func dedupeSelectedModes(modes []string) []string {
+	seen := make(map[string]struct{}, len(modes))
+	out := make([]string, 0, len(modes))
+	for _, mode := range modes {
+		if mode == "" {
+			continue
+		}
+		if _, ok := seen[mode]; ok {
+			continue
+		}
+		seen[mode] = struct{}{}
+		out = append(out, mode)
+	}
+	return out
+}
+
 // parseMetadataFilterParam reads the `metadata` query parameter (a JSON
 // object) and returns it as the JSONB filter blob passed to ListIssues /
 // CountIssues / ListOpenIssues. Empty input means "no filter" and returns

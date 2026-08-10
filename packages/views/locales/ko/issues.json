@@ -13,7 +13,8 @@
     "in_review": "리뷰 중",
     "done": "완료",
     "blocked": "막힘",
-    "cancelled": "취소됨"
+    "cancelled": "취소됨",
+    "needs_input": "입력 대기"
   },
   "priority": {
     "urgent": "긴급",

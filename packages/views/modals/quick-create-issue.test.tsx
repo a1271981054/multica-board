@@ -504,7 +504,7 @@ describe("AgentCreatePanel", () => {
   });
 
   it("does not reopen with a leftover slash-only tag as the default prompt", () => {
-    mockIssueDraftStore.draft.agent.prompt = "[/目标](slash://skill/mode:目标)";
+    mockIssueDraftStore.draft.agent.prompt = "[/目标模式](slash://skill/mode:目标模式)";
     renderPanel({ onClose: vi.fn(), isExpanded: false, setIsExpanded: vi.fn() });
 
     expect(screen.getByPlaceholderText(/tell the agent what to do/i)).toHaveValue("");
@@ -526,7 +526,7 @@ describe("AgentCreatePanel", () => {
     fireEvent.click(modeItem);
 
     expect((textarea as HTMLTextAreaElement).value).toContain(
-      "[/目标](slash://skill/mode:目标)",
+      "[/目标模式](slash://skill/mode:目标模式)",
     );
   });
 

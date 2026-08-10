@@ -35,6 +35,10 @@ type ExecOptions struct {
 	// backend that only reads SystemPrompt will silently receive nothing.
 	SystemPrompt string
 	ThreadName   string
+	// GoalObjective, when non-empty, asks the provider to attach a native
+	// long-running goal to the session/thread it starts. Currently honoured by
+	// the codex backend via `thread/goal/set`; other providers ignore it.
+	GoalObjective string
 	// ThreadSource classifies a Codex thread for the app-server state DB.
 	// "user" makes shared-home sessions show up as regular conversations in
 	// the Codex sidebar; empty keeps the CLI default (currently also null).

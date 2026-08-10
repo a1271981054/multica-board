@@ -6,6 +6,6 @@ export const SLASH_MODES = [
   "推理",
   "模型",
   "状态",
-  "目标",
+  "目标模式",
   "计划模式",
 ] as const;

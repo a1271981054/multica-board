@@ -1757,6 +1757,14 @@ func (h *Handler) buildClaimedTaskResponse(r *http.Request, task *db.AgentTaskQu
 		if issue, err := h.Queries.GetIssue(r.Context(), task.IssueID); err == nil {
 			resp.WorkspaceID = uuidToString(issue.WorkspaceID)
 			resp.ThreadName = issue.Title
+			resp.IssueTitle = issue.Title
+			if issue.Description.Valid {
+				resp.IssueDescription = issue.Description.String
+			}
+			resp.IssueSelectedModes = dedupeSelectedModes(append(
+				service.SelectedModesFromMetadata(issue.Metadata),
+				service.SelectedModesFromText(issue.Description.String)...,
+			))
 
 			// Squad-leader briefing injection: keyed off the task being a
 			// leader-task (is_leader_task) carrying a squad_id — NOT off the

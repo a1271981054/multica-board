@@ -27,7 +27,7 @@ describe("slash command deletion", () => {
     editor.commands.insertContent([
       {
         type: "slashCommand",
-        attrs: { label: "目标", id: "mode:目标" },
+        attrs: { label: "目标模式", id: "mode:目标模式" },
       },
     ]);
     editor.commands.focus("end");

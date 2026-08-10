@@ -5281,6 +5281,34 @@ func (s *TaskService) notifyQuickCreateCompleted(ctx context.Context, task db.Ag
 		)
 	}
 
+	// Persist slash-selected modes (e.g. `目标模式`) onto the created issue so
+	// future issue-bound runs re-discover them and can activate the same modes
+	// (including Codex's native goal mode). Best-effort: the issue itself and
+	// the inbox notification are the primary contract.
+	if modes := SelectedModesFromText(qc.Prompt); len(modes) > 0 {
+		value, merr := MarshalSelectedModes(modes)
+		if merr == nil {
+			if _, serr := s.Queries.SetIssueMetadataKey(ctx, db.SetIssueMetadataKeyParams{
+				ID:          issue.ID,
+				WorkspaceID: issue.WorkspaceID,
+				Key:         SelectedModesMetadataKey,
+				Value:       value,
+			}); serr != nil {
+				slog.Warn("quick-create completion: persist selected modes failed",
+					"task_id", util.UUIDToString(task.ID),
+					"issue_id", util.UUIDToString(issue.ID),
+					"error", serr,
+				)
+			}
+		} else {
+			slog.Warn("quick-create completion: marshal selected modes failed",
+				"task_id", util.UUIDToString(task.ID),
+				"issue_id", util.UUIDToString(issue.ID),
+				"error", merr,
+			)
+		}
+	}
+
 	// Subscribing the requester used to happen here, at completion. It now
 	// happens at issue-creation time in the shared delegated-subscriber rule
 	// (cmd/server/subscriber_listeners.go → subscribeDelegatedHuman), which

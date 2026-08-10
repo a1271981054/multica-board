@@ -734,6 +734,60 @@ func TestClaimTaskByRuntime_SkillBundleRefsAndResolve(t *testing.T) {
 	}
 }
 
+func TestClaimTaskByRuntime_PopulatesIssueModes(t *testing.T) {
+	if testHandler == nil || testPool == nil {
+		t.Skip("database not available")
+	}
+
+	ctx := context.Background()
+	runtimeID := createClaimReclaimRuntime(t, ctx, "Issue modes runtime")
+	agentID, issueID := createClaimReclaimAgentAndIssue(t, ctx, runtimeID, "Issue modes agent")
+	if _, err := testPool.Exec(ctx, `
+		UPDATE issue
+		SET description = $2,
+		    metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{selected_modes}', '"目标模式"'::jsonb)
+		WHERE id = $1
+	`, issueID, "[/目标模式](slash://skill/mode:目标模式) 修复门店套餐"); err != nil {
+		t.Fatalf("setup: seed issue modes: %v", err)
+	}
+	createDispatchedClaimFixtureTask(t, ctx, agentID, runtimeID, issueID, "120 seconds", false)
+
+	w := httptest.NewRecorder()
+	req := newDaemonTokenRequest("POST", "/api/daemon/runtimes/"+runtimeID+"/tasks/claim", nil,
+		testWorkspaceID, "issue-modes-daemon")
+	req = withURLParam(req, "runtimeId", runtimeID)
+	testHandler.ClaimTaskByRuntime(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("ClaimTaskByRuntime: expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var claimResp struct {
+		Task *AgentTaskResponse `json:"task"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &claimResp); err != nil {
+		t.Fatalf("decode claim: %v", err)
+	}
+	if claimResp.Task == nil {
+		t.Fatalf("missing task in response: %s", w.Body.String())
+	}
+	if claimResp.Task.IssueTitle != "Issue modes agent issue" {
+		t.Fatalf("IssueTitle = %q, want issue title", claimResp.Task.IssueTitle)
+	}
+	if !strings.Contains(claimResp.Task.IssueDescription, "目标模式") {
+		t.Fatalf("IssueDescription missing mode tag: %q", claimResp.Task.IssueDescription)
+	}
+	found := false
+	for _, mode := range claimResp.Task.IssueSelectedModes {
+		if mode == "目标" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("IssueSelectedModes = %v, want 目标", claimResp.Task.IssueSelectedModes)
+	}
+}
+
 // TestClaimTaskByRuntime_PopulatesWorkspaceContext verifies the claim
 // response carries workspace.context so the daemon can inject the
 // workspace-level system prompt into every agent brief. Regression coverage
