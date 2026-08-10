@@ -4124,15 +4124,6 @@ func (s *TaskService) maybeContinueUnfinishedIssue(ctx context.Context, task db.
 	if issue.Status != "in_progress" {
 		return
 	}
-	var resumeMeta struct {
-		ReviewResume bool `json:"review_resume"`
-	}
-	if len(task.Context) > 0 {
-		_ = json.Unmarshal(task.Context, &resumeMeta)
-	}
-	if !resumeMeta.ReviewResume {
-		return
-	}
 	hasActive, err := s.Queries.HasActiveTaskForIssue(ctx, task.IssueID)
 	if err != nil {
 		slog.Warn("continue unfinished issue: active check failed",

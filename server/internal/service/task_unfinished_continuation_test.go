@@ -71,7 +71,7 @@ func TestCompleteTask_ContinuesUnfinishedInProgressIssue(t *testing.T) {
 			agent_id, runtime_id, issue_id, status, priority,
 			started_at, attempt, max_attempts, context
 		)
-		VALUES ($1, $2, $3, 'running', 0, now(), 1, 2, '{"review_resume":true}'::jsonb)
+		VALUES ($1, $2, $3, 'running', 0, now(), 1, 2, '{}'::jsonb)
 		RETURNING id`, agentID, runtimeID, issueID).Scan(&taskID); err != nil {
 		t.Fatalf("create running task: %v", err)
 	}
