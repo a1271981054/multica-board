@@ -1076,6 +1076,7 @@ func (s *TaskService) enqueueIssueTaskWithCommentPlan(ctx context.Context, issue
 		TriggerEvidenceRefID:  attrEvidenceRef,
 		ModelOverride:         pgtype.Text{String: overrides.Model, Valid: overrides.Model != ""},
 		ThinkingLevelOverride: pgtype.Text{String: overrides.ThinkingLevel, Valid: overrides.ThinkingLevel != ""},
+		ReviewResume:          pgtype.Bool{Bool: issue.Status == "in_review", Valid: true},
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -1211,6 +1212,7 @@ func (s *TaskService) enqueueMentionTaskWithCommentPlan(ctx context.Context, iss
 		TriggerEvidenceRefID:  attrEvidenceRef,
 		ModelOverride:         pgtype.Text{String: overrides.Model, Valid: overrides.Model != ""},
 		ThinkingLevelOverride: pgtype.Text{String: overrides.ThinkingLevel, Valid: overrides.ThinkingLevel != ""},
+		ReviewResume:          pgtype.Bool{Bool: issue.Status == "in_review", Valid: true},
 		// Stamp the reviewed head so dedup can distinguish this run's target
 		// from a later request against a new HEAD (TEN-356).
 		HeadSha: headShaText(s.ResolveIssueReviewSHA(ctx, issue.ID)),
@@ -3120,7 +3122,7 @@ func (s *TaskService) promoteIssueToInProgressOnStart(ctx context.Context, task 
 		return
 	}
 	switch issue.Status {
-	case "todo", "backlog", "needs_input":
+	case "todo", "backlog", "needs_input", "in_review":
 	default:
 		return
 	}
@@ -3421,6 +3423,7 @@ func (s *TaskService) CompleteTask(ctx context.Context, taskID pgtype.UUID, resu
 
 	// Broadcast
 	s.broadcastTaskEvent(ctx, protocol.EventTaskCompleted, task)
+	s.maybeContinueUnfinishedIssue(ctx, task)
 
 	return &task, nil
 }
@@ -3900,6 +3903,11 @@ var retryableReasons = map[string]bool{
 const (
 	providerNetworkMaxAttempts    = 3
 	providerNetworkFinalRetryWait = 5 * time.Second
+	// maxUnfinishedContinuations bounds how many times a completed issue task
+	// is automatically re-activated while the issue is still in_progress.
+	// The handoff note tells the agent to finish and move the issue to
+	// in_review; this cap only prevents an endless token-burning loop.
+	maxUnfinishedContinuations = 5
 )
 
 // retryAttemptCeiling reports how many attempts the auto-retry path allows for
@@ -4090,6 +4098,104 @@ func (s *TaskService) MaybeRetryFailedTask(ctx context.Context, parent db.AgentT
 		s.NotifyTaskEnqueued(ctx, child)
 	}
 	return &child, nil
+}
+
+// maybeContinueUnfinishedIssue re-activates the same agent when an issue task
+// completed successfully but the issue is still in_progress. The agent often
+// stops after reporting "changes done" without moving the card to in_review;
+// this gives it another run with an explicit handoff note that says to finish
+// the remaining work and only then set in_review. The continuation is capped
+// so a model that never flips the status cannot burn tokens forever.
+func (s *TaskService) maybeContinueUnfinishedIssue(ctx context.Context, task db.AgentTaskQueue) {
+	if !task.IssueID.Valid || task.AutopilotRunID.Valid {
+		return
+	}
+	issue, err := s.Queries.GetIssue(ctx, task.IssueID)
+	if err != nil {
+		slog.Warn("continue unfinished issue: load issue failed",
+			"task_id", util.UUIDToString(task.ID),
+			"issue_id", util.UUIDToString(task.IssueID),
+			"error", err,
+		)
+		return
+	}
+	if issue.Status != "in_progress" {
+		return
+	}
+	var resumeMeta struct {
+		ReviewResume bool `json:"review_resume"`
+	}
+	if len(task.Context) > 0 {
+		_ = json.Unmarshal(task.Context, &resumeMeta)
+	}
+	if !resumeMeta.ReviewResume {
+		return
+	}
+	hasActive, err := s.Queries.HasActiveTaskForIssue(ctx, task.IssueID)
+	if err != nil {
+		slog.Warn("continue unfinished issue: active check failed",
+			"task_id", util.UUIDToString(task.ID),
+			"issue_id", util.UUIDToString(task.IssueID),
+			"error", err,
+		)
+		return
+	}
+	if hasActive {
+		return
+	}
+	if task.Attempt >= maxUnfinishedContinuations {
+		slog.Info("continue unfinished issue skipped: budget exhausted",
+			"task_id", util.UUIDToString(task.ID),
+			"issue_id", util.UUIDToString(task.IssueID),
+			"attempt", task.Attempt,
+			"ceiling", maxUnfinishedContinuations,
+		)
+		return
+	}
+	agent, err := s.Queries.GetAgent(ctx, task.AgentID)
+	if err != nil || agent.ArchivedAt.Valid || !agent.RuntimeID.Valid {
+		slog.Warn("continue unfinished issue: agent not runnable",
+			"task_id", util.UUIDToString(task.ID),
+			"agent_id", util.UUIDToString(task.AgentID),
+			"error", err,
+		)
+		return
+	}
+	overlay := s.buildRuntimeMCPOverlay(ctx, task.OriginatorUserID, agent)
+	child, err := s.Queries.CreateRetryTask(ctx, db.CreateRetryTaskParams{
+		ID:                   task.ID,
+		MaxAttempts:          pgtype.Int4{Int32: maxUnfinishedContinuations, Valid: true},
+		RuntimeMcpOverlay:    overlay.Overlay,
+		RuntimeConnectedApps: overlay.ConnectedApps,
+	})
+	if err != nil {
+		slog.Warn("continue unfinished issue: enqueue failed",
+			"task_id", util.UUIDToString(task.ID),
+			"issue_id", util.UUIDToString(task.IssueID),
+			"error", err,
+		)
+		return
+	}
+	note := "上一轮运行已结束，但任务仍处于“进行中”。请先检查上一轮输出，继续完成剩余工作，不要重复已经完成的步骤。只有当你确认任务已经完成时，才将任务状态更新为 in_review（待审核），然后结束本轮。"
+	if _, err := s.Queries.SetTaskHandoffNote(ctx, db.SetTaskHandoffNoteParams{
+		ID:          child.ID,
+		HandoffNote: pgtype.Text{String: note, Valid: true},
+	}); err != nil {
+		slog.Warn("continue unfinished issue: stamp handoff note failed",
+			"task_id", util.UUIDToString(task.ID),
+			"child_task_id", util.UUIDToString(child.ID),
+			"error", err,
+		)
+	}
+	s.broadcastTaskEvent(ctx, protocol.EventTaskQueued, child)
+	s.NotifyTaskEnqueued(ctx, child)
+	slog.Info("unfinished issue continuation enqueued",
+		"parent_task_id", util.UUIDToString(task.ID),
+		"child_task_id", util.UUIDToString(child.ID),
+		"issue_id", util.UUIDToString(task.IssueID),
+		"attempt", child.Attempt,
+		"max_attempts", child.MaxAttempts,
+	)
 }
 
 // RerunIssue creates a fresh queued task for an agent on the issue. Used by

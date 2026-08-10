@@ -296,10 +296,12 @@ VALUES (
         WHEN COALESCE(sqlc.narg('head_sha')::text, '') <> ''
           OR COALESCE(sqlc.narg('model_override')::text, '') <> ''
           OR COALESCE(sqlc.narg('thinking_level_override')::text, '') <> ''
+          OR COALESCE(sqlc.narg('review_resume')::boolean, FALSE)
         THEN jsonb_build_object(
             'head_sha', COALESCE(sqlc.narg('head_sha')::text, ''),
             'model', COALESCE(sqlc.narg('model_override')::text, ''),
-            'thinking_level', COALESCE(sqlc.narg('thinking_level_override')::text, '')
+            'thinking_level', COALESCE(sqlc.narg('thinking_level_override')::text, ''),
+            'review_resume', COALESCE(sqlc.narg('review_resume')::boolean, FALSE)
         )
         ELSE NULL
     END,
@@ -464,6 +466,15 @@ SELECT
     p.chat_input_task_id, sqlc.narg(fire_at)
 FROM agent_task_queue p
 WHERE p.id = $1
+RETURNING *;
+
+-- name: SetTaskHandoffNote :one
+-- Stamps a handoff instruction onto a queued task. Used by the unfinished-
+-- issue continuation path so the resumed agent knows the previous run ended
+-- without moving the issue to in_review.
+UPDATE agent_task_queue
+SET handoff_note = $2
+WHERE id = $1
 RETURNING *;
 
 -- name: CancelAgentTasksByIssue :many
