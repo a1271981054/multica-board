@@ -3106,8 +3106,10 @@ func (s *TaskService) StartTask(ctx context.Context, taskID pgtype.UUID) (*db.Ag
 
 // promoteIssueToInProgressOnStart moves an issue into in_progress the moment
 // one of its agent tasks actually starts. The model still owns later
-// transitions (in_review / done / blocked), but the todo -> in_progress hop
-// should not depend on the model following the workflow prompt.
+// transitions (in_review / done / blocked), but the non-in_progress ->
+// in_progress hop should not depend on the model following the workflow
+// prompt. Commenting on a done or blocked card re-triggers the agent, so the
+// card must move back to in_progress as soon as the run starts.
 func (s *TaskService) promoteIssueToInProgressOnStart(ctx context.Context, task db.AgentTaskQueue) {
 	if !task.IssueID.Valid {
 		return
@@ -3122,7 +3124,7 @@ func (s *TaskService) promoteIssueToInProgressOnStart(ctx context.Context, task 
 		return
 	}
 	switch issue.Status {
-	case "todo", "backlog", "needs_input", "in_review":
+	case "todo", "backlog", "needs_input", "in_review", "done", "blocked":
 	default:
 		return
 	}
