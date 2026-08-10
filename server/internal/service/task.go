@@ -3907,7 +3907,7 @@ const (
 	// is automatically re-activated while the issue is still in_progress.
 	// The handoff note tells the agent to finish and move the issue to
 	// in_review; this cap only prevents an endless token-burning loop.
-	maxUnfinishedContinuations = 5
+	maxUnfinishedContinuations = 100
 )
 
 // retryAttemptCeiling reports how many attempts the auto-retry path allows for
