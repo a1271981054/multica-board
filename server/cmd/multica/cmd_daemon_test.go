@@ -49,6 +49,24 @@ func TestDaemonAlive(t *testing.T) {
 	}
 }
 
+func TestValidateDaemonCLIVersion(t *testing.T) {
+	t.Setenv("MULTICA_ALLOW_DEV_DAEMON", "")
+	if err := validateDaemonCLIVersion("dev"); err == nil {
+		t.Fatal("unstamped dev version should be rejected without the allow flag")
+	}
+	if err := validateDaemonCLIVersion("0.4.19"); err != nil {
+		t.Fatalf("release version should pass: %v", err)
+	}
+	if err := validateDaemonCLIVersion("v0.2.21-3-gabc1234"); err != nil {
+		t.Fatalf("dev-describe version should pass: %v", err)
+	}
+
+	t.Setenv("MULTICA_ALLOW_DEV_DAEMON", "1")
+	if err := validateDaemonCLIVersion("dev"); err != nil {
+		t.Fatalf("explicit allow flag should permit dev builds: %v", err)
+	}
+}
+
 func TestPrintDaemonStatusIncludesCLIVersion(t *testing.T) {
 	t.Parallel()
 

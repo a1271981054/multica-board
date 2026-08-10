@@ -808,6 +808,9 @@ func runDaemonForeground(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	if err := validateDaemonCLIVersion(version); err != nil {
+		return err
+	}
 	cfg.CLIVersion = version
 	// Set by the Electron Desktop app when it spawns the CLI so the server
 	// can mark those runtimes as "managed" and hide CLI self-update UI.
@@ -895,6 +898,23 @@ func runDaemonForeground(cmd *cobra.Command) error {
 		logger.Info("new daemon started", "pid", child.Process.Pid)
 	}
 
+	return nil
+}
+
+// validateDaemonCLIVersion refuses to start an unstamped dev daemon. A plain
+// "dev" version makes the quick-create server gate report
+// "multica CLI version not reported by daemon", so failing fast at startup is
+// clearer than letting the daemon register a runtime that cannot create
+// agents. Git-describe dev builds are still allowed, matching
+// agent.CheckMinCLIVersion's dev-build exemption.
+func validateDaemonCLIVersion(v string) error {
+	if v == "dev" && os.Getenv("MULTICA_ALLOW_DEV_DAEMON") == "" {
+		return errors.New(
+			"multica daemon refuses to run with an unstamped dev build; " +
+				"rebuild with -ldflags \"-X main.version=0.4.19\" or set " +
+				"MULTICA_ALLOW_DEV_DAEMON=1 for local development",
+		)
+	}
 	return nil
 }
 
