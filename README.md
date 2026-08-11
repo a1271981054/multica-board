@@ -79,6 +79,13 @@ Prerequisite: macOS with Codex installed (`ChatGPT.app` or `Codex.app`), or CC S
 curl -fsSL https://github.com/a1271981054/multica-board/releases/latest/download/install.sh | sudo bash
 ```
 
+用户安装步骤：
+
+1. 先退出 Codex / ChatGPT。侧边栏补丁要求 Codex 未运行，否则安装器会中止并提示先退出。
+2. 在终端执行上面的安装命令，输入 sudo 密码。
+3. 安装器自动完成：安装 App、下载便携 Node.js 和 PostgreSQL、初始化本地账号 / 工作区 / daemon token、启动 backend / web / daemon，并给 Codex 侧边栏打补丁（保留备份）。
+4. 安装完成后重新打开 Codex，左侧导航会出现“任务看板”，点击即可使用。
+
 安装器会：
 
 The installer will:
@@ -98,6 +105,10 @@ After install, open:
 ```
 http://127.0.0.1:13000
 ```
+
+不需要输入邮箱：安装器会自动创建本地账号 `local@multica.local` 并启用自动登录，网页打开后自动发送并验证随机验证码，直接进入看板。
+
+No email login is required: setup creates `local@multica.local` and enables auto-login, so the web app auto-submits and verifies the local code and lands directly on the board.
 
 ## 常用命令 / Commands
 

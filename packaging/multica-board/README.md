@@ -32,6 +32,12 @@ The installer:
 
 Open `http://127.0.0.1:13000` after install.
 
+## After install
+
+- Quit Codex / ChatGPT before installing so the sidebar patch can run; the installer backs up the original app and `multica-board patch --undo` restores it.
+- Reopen Codex after install: the left sidebar now has a "任务看板" entry that opens the board webview at `http://127.0.0.1:13000`.
+- No email login: setup creates `local@multica.local` and enables auto-login, so the web app auto-submits the local verification code and lands directly on the board.
+
 ## Commands
 
 ```bash
