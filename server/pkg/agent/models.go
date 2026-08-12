@@ -104,6 +104,7 @@ func discovered(models []Model, err error) (Catalog, error) {
 // don't re-shell the agent CLI. Entries expire after cacheTTL.
 type modelCacheEntry struct {
 	models    []Model
+	fallback  bool
 	expiresAt time.Time
 }
 
@@ -137,7 +138,7 @@ func ListModels(ctx context.Context, providerType, executablePath string) (Catal
 		return Catalog{Models: models}, nil
 	case "codex":
 		return cachedDiscovery(discoveryCacheKey(providerType, executablePath), func() (Catalog, error) {
-			return discovered(discoverCodexModels(ctx, executablePath), nil)
+			return discoverCodexCatalog(ctx, executablePath, "", true)
 		})
 	case "antigravity":
 		// agy 1.0.6 added a `--model` flag plus an `agy models` catalog
@@ -229,6 +230,52 @@ func ListModels(ctx context.Context, providerType, executablePath string) (Catal
 	}
 }
 
+// ListModelsForCodexHome discovers the catalog from a task-local CODEX_HOME.
+// The daemon uses this after it has prepared the task environment so model
+// compatibility follows the exact native or CC Switch configuration that the
+// child Codex process will read. Unlike the UI-facing ListModels call, this
+// keeps the full catalog instead of filtering it to config.toml's current
+// model: an explicit agent override may legitimately select another model
+// advertised by the active provider.
+func ListModelsForCodexHome(ctx context.Context, executablePath, codexHome string) (Catalog, error) {
+	codexHome = strings.TrimSpace(codexHome)
+	if codexHome == "" {
+		return cachedDiscovery(discoveryCacheKey("codex", executablePath)+":full", func() (Catalog, error) {
+			return discoverCodexCatalog(ctx, executablePath, "", false)
+		})
+	}
+	return cachedDiscovery(
+		discoveryCacheKey("codex", executablePath)+":"+codexHome+":"+codexCatalogFingerprint(codexHome),
+		func() (Catalog, error) {
+			return discoverCodexCatalog(ctx, executablePath, codexHome, false)
+		},
+	)
+}
+
+// ResolveCodexModel preserves an explicit model only when the current task's
+// Codex catalog advertises it. An empty result means "use the runtime's own
+// default". Discovery fallbacks are intentionally fail-open: a static catalog
+// cannot prove that a custom CC Switch model is invalid.
+func ResolveCodexModel(ctx context.Context, executablePath, codexHome, requested string) (string, error) {
+	requested = strings.TrimSpace(requested)
+	if requested == "" {
+		return "", nil
+	}
+	catalog, err := ListModelsForCodexHome(ctx, executablePath, codexHome)
+	if err != nil {
+		return requested, err
+	}
+	if catalog.Fallback || len(catalog.Models) == 0 {
+		return requested, nil
+	}
+	for _, model := range catalog.Models {
+		if model.ID == requested {
+			return requested, nil
+		}
+	}
+	return "", nil
+}
+
 // ModelSelectionSupported reports whether setting `agent.model` has
 // any effect for the given provider. Every built-in provider now honours
 // `opts.Model` end-to-end — Hermes routes it through the ACP
@@ -315,15 +362,15 @@ func modelHasKnownPrefix(model string) bool {
 }
 
 // cachedDiscovery invokes fn and caches the result for modelCacheTTL.
-// The cache is keyed on providerType only; callers that need to
-// distinguish discovery by host/user should include that in the key
-// if we ever introduce such a mode.
+// The caller owns the key: the UI uses provider/executable, while execution
+// time Codex discovery adds the task CODEX_HOME and its config fingerprint.
 func cachedDiscovery(key string, fn func() (Catalog, error)) (Catalog, error) {
 	modelCacheMu.Lock()
 	if entry, ok := modelCache[key]; ok && time.Now().Before(entry.expiresAt) {
 		out := entry.models
+		fallback := entry.fallback
 		modelCacheMu.Unlock()
-		return Catalog{Models: out}, nil
+		return Catalog{Models: out, Fallback: fallback}, nil
 	}
 	modelCacheMu.Unlock()
 
@@ -348,7 +395,7 @@ func cachedDiscovery(key string, fn func() (Catalog, error)) (Catalog, error) {
 	}
 
 	modelCacheMu.Lock()
-	modelCache[key] = modelCacheEntry{models: catalog.Models, expiresAt: time.Now().Add(modelCacheTTL)}
+	modelCache[key] = modelCacheEntry{models: catalog.Models, fallback: catalog.Fallback, expiresAt: time.Now().Add(modelCacheTTL)}
 	modelCacheMu.Unlock()
 	return catalog, nil
 }

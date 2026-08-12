@@ -346,6 +346,119 @@ echo '{"models":[{"slug":"runtime-model","display_name":"Runtime Model","visibil
 	})
 }
 
+func TestResolveCodexModelFollowsTaskLocalCatalog(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell-script fake binary requires a POSIX shell")
+	}
+
+	tests := []struct {
+		name         string
+		configured   string
+		catalog      string
+		keep         string
+		drop         string
+		keepThinking string
+		keepService  string
+		wantFallback bool
+	}{
+		{
+			name:         "native codex",
+			configured:   "gpt-5.6-luna",
+			catalog:      `{"models":[{"slug":"gpt-5.6-luna","display_name":"Luna","visibility":"list","supported_reasoning_levels":[{"effort":"medium"},{"effort":"max"}],"service_tiers":[{"id":"priority","name":"Fast"}]}]}`,
+			keep:         "gpt-5.6-luna",
+			drop:         "deepseek-v4-flash",
+			keepThinking: "max",
+			keepService:  "priority",
+		},
+		{
+			name:         "CC Switch",
+			configured:   "deepseek-v4-flash",
+			catalog:      `{"models":[{"slug":"deepseek-v4-flash","display_name":"DeepSeek V4 Flash","visibility":"list","supported_reasoning_levels":[{"effort":"medium"}]}]}`,
+			keep:         "deepseek-v4-flash",
+			drop:         "gpt-5.6-luna",
+			keepThinking: "medium",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			home := filepath.Join(dir, "codex-home")
+			if err := os.MkdirAll(home, 0o755); err != nil {
+				t.Fatalf("create task Codex home: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("model = \""+tc.configured+"\"\n"), 0o644); err != nil {
+				t.Fatalf("write task Codex config: %v", err)
+			}
+
+			fake := filepath.Join(dir, "codex")
+			seenHome := filepath.Join(dir, "seen-home")
+			script := "#!/bin/sh\n" +
+				"if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.144.1'; exit 0; fi\n" +
+				"if [ \"$1\" = \"debug\" ]; then printf '%s' \"$CODEX_HOME\" > '" + seenHome + "'; echo '" + tc.catalog + "'; exit 0; fi\n" +
+				"exit 1\n"
+			writeTestExecutable(t, fake, []byte(script))
+
+			got, err := ResolveCodexModel(context.Background(), fake, home, tc.keep)
+			if err != nil {
+				t.Fatalf("resolve supported model: %v", err)
+			}
+			if got != tc.keep {
+				t.Fatalf("ResolveCodexModel(%q) = %q, want %q", tc.keep, got, tc.keep)
+			}
+			got, err = ResolveCodexModel(context.Background(), fake, home, tc.drop)
+			if err != nil {
+				t.Fatalf("resolve incompatible model: %v", err)
+			}
+			if got != "" {
+				t.Fatalf("ResolveCodexModel(%q) = %q, want empty runtime-default override", tc.drop, got)
+			}
+
+			seen, err := os.ReadFile(seenHome)
+			if err != nil {
+				t.Fatalf("read CODEX_HOME seen by discovery: %v", err)
+			}
+			if string(seen) != home {
+				t.Fatalf("debug models saw CODEX_HOME %q, want %q", seen, home)
+			}
+
+			if tc.keepThinking != "" {
+				ok, err := ValidateThinkingLevelForCodexHome(context.Background(), fake, home, tc.keep, tc.keepThinking)
+				if err != nil || !ok {
+					t.Fatalf("ValidateThinkingLevelForCodexHome(%q, %q) = %v, %v; want true, nil", tc.keep, tc.keepThinking, ok, err)
+				}
+			}
+			if tc.keepService != "" {
+				ok, err := ValidateServiceTierForCodexHome(context.Background(), fake, home, tc.keep, tc.keepService)
+				if err != nil || !ok {
+					t.Fatalf("ValidateServiceTierForCodexHome(%q, %q) = %v, %v; want true, nil", tc.keep, tc.keepService, ok, err)
+				}
+			}
+		})
+	}
+
+	t.Run("discovery fallback preserves explicit custom model", func(t *testing.T) {
+		dir := t.TempDir()
+		home := filepath.Join(dir, "codex-home")
+		if err := os.MkdirAll(home, 0o755); err != nil {
+			t.Fatalf("create task Codex home: %v", err)
+		}
+		fake := filepath.Join(dir, "codex")
+		script := "#!/bin/sh\n" +
+			"if [ \"$1\" = \"--version\" ]; then echo 'codex-cli 0.144.1'; exit 0; fi\n" +
+			"exit 1\n"
+		writeTestExecutable(t, fake, []byte(script))
+
+		got, err := ResolveCodexModel(context.Background(), fake, home, "private-cc-switch-model")
+		if err != nil {
+			t.Fatalf("resolve model with fallback catalog: %v", err)
+		}
+		if got != "private-cc-switch-model" {
+			t.Fatalf("fallback resolution = %q, want explicit model preserved", got)
+		}
+	})
+}
+
 func TestValidateThinkingLevelCodexPerModelFallbackCatalog(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -359,6 +472,9 @@ func TestValidateThinkingLevelCodexPerModelFallbackCatalog(t *testing.T) {
 		{model: "gpt-5.6-luna", level: "ultra", want: false},
 		{model: "gpt-5.3-codex", level: "xhigh", want: true},
 		{model: "gpt-5.3-codex", level: "max", want: false},
+		// A private CC Switch model is not in the static fallback catalog;
+		// keep the model usable but drop the unverified effort override.
+		{model: "private-cc-switch-model", level: "ultra", want: false},
 	} {
 		got, err := ValidateThinkingLevel(context.Background(), "codex", "/nonexistent/codex", tc.model, tc.level)
 		if err != nil {

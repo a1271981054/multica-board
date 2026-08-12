@@ -38,6 +38,16 @@ Open `http://127.0.0.1:13000` after install.
 - Reopen Codex after install: the left sidebar now has a "任务看板" entry that opens the board webview at `http://127.0.0.1:13000`.
 - No email login: setup creates `local@multica.local` and enables auto-login, so the web app auto-submits the local verification code and lands directly on the board.
 
+## Codex model configuration
+
+The Board follows the Codex configuration that is active when a task starts.
+That means the same installation supports both the native OpenAI/ChatGPT Codex
+configuration and a CC Switch provider. Leave an agent's model and thinking
+level at their runtime defaults when switching providers; if an older saved
+model is not present in the active provider's catalog, the daemon drops that
+one-run override and lets the active Codex runtime choose its default instead
+of sending an incompatible model to the API.
+
 ## Commands
 
 ```bash

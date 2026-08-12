@@ -6125,6 +6125,26 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if task.RunModelOverride != "" {
 		model = task.RunModelOverride
 	}
+	modelOverrideDropped := false
+	if provider == "codex" && strings.TrimSpace(model) != "" {
+		resolvedModel, resolveErr := agent.ResolveCodexModel(ctx, entry.Path, env.CodexHome, model)
+		if resolveErr != nil {
+			// Preserve an explicit choice when discovery itself failed. The
+			// Codex process remains the final authority in that degraded case.
+			taskLog.Warn("model: Codex catalog lookup failed; passing through",
+				"requested_model", model,
+				"error", resolveErr,
+			)
+		} else if resolvedModel == "" {
+			taskLog.Warn("model: not available in the active Codex catalog; using the runtime default",
+				"requested_model", model,
+			)
+			model = ""
+			modelOverrideDropped = true
+		} else {
+			model = resolvedModel
+		}
+	}
 	thinkingLevel := ""
 	serviceTier := ""
 	if task.Agent != nil {
@@ -6137,13 +6157,27 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	if task.RunThinkingLevelOverride != "" {
 		thinkingLevel = task.RunThinkingLevelOverride
 	}
+	if modelOverrideDropped {
+		// A thinking level or service tier belongs to the model it was saved
+		// with. Once that model is incompatible with the active native/CC
+		// Switch catalog, carrying either value across would recreate the same
+		// mismatch one field later in the request.
+		thinkingLevel = ""
+		serviceTier = ""
+	}
 	// service_tier is catalog-owned and currently Codex-only. As with
-	// thinking_level, stale or incompatible persisted values degrade to the
+	// thinking_level, stale or unverified persisted values degrade to the
 	// runtime default instead of failing the task. Catalog lookup errors pass
 	// through so a transient discovery failure does not silently disable a
 	// previously valid user choice.
 	if serviceTier != "" {
-		ok, err := agent.ValidateServiceTier(ctx, provider, entry.Path, model, serviceTier)
+		var ok bool
+		var err error
+		if provider == "codex" {
+			ok, err = agent.ValidateServiceTierForCodexHome(ctx, entry.Path, env.CodexHome, model, serviceTier)
+		} else {
+			ok, err = agent.ValidateServiceTier(ctx, provider, entry.Path, model, serviceTier)
+		}
 		if err != nil {
 			taskLog.Warn("service_tier: catalog lookup failed; passing through",
 				"provider", provider,
@@ -6169,10 +6203,17 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, slot i
 	// resolved by ValidateThinkingLevel to the provider's default model so
 	// default-model tasks aren't misjudged — except for codex, whose empty
 	// model follows config.toml (any model) and so fails closed, dropping the
-	// level here. Discovery errors fail open for resolved models: if we can't
-	// list models, we keep the persisted level and let the CLI object.
+	// level here. A catalog fallback clears an unverified override; a hard
+	// discovery error still passes through so a transient lookup failure does
+	// not block a task whose explicit choice may be valid.
 	if thinkingLevel != "" {
-		ok, err := agent.ValidateThinkingLevel(ctx, provider, entry.Path, model, thinkingLevel)
+		var ok bool
+		var err error
+		if provider == "codex" {
+			ok, err = agent.ValidateThinkingLevelForCodexHome(ctx, entry.Path, env.CodexHome, model, thinkingLevel)
+		} else {
+			ok, err = agent.ValidateThinkingLevel(ctx, provider, entry.Path, model, thinkingLevel)
+		}
 		if err != nil {
 			taskLog.Warn("thinking_level: catalog lookup failed; passing through",
 				"provider", provider,

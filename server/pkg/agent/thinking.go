@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -303,28 +305,31 @@ type codexDebugServiceTier struct {
 	Description string `json:"description"`
 }
 
-// discoverCodexModels returns the installed Codex binary's bundled visible
-// catalog, including reasoning metadata. Version detection happens before the
-// debug command so old binaries do not log a predictable "unknown command"
-// failure on every cache refresh.
-func discoverCodexModels(ctx context.Context, executablePath string) []Model {
+// discoverCodexCatalog returns the installed Codex binary's visible catalog,
+// including reasoning metadata. Version detection happens before the debug
+// command so old binaries do not log a predictable "unknown command" failure
+// on every cache refresh. codexHome is empty for the daemon-wide/UI discovery;
+// a non-empty value is the task-local CODEX_HOME used by execution-time
+// compatibility checks.
+func discoverCodexCatalog(ctx context.Context, executablePath, codexHome string, filterConfigured bool) (Catalog, error) {
 	if executablePath == "" {
 		executablePath = "codex"
 	}
 	version, err := DetectVersion(ctx, executablePath)
 	if err != nil || !codexSupportsDebugModels(version) {
-		return codexStaticModels()
+		return Catalog{Models: codexStaticModels(), Fallback: true}, nil
 	}
 
-	raw, err := runCodexDebugModels(ctx, executablePath)
+	raw, err := runCodexDebugModelsWithHome(ctx, executablePath, codexHome)
 	if err != nil {
-		return codexStaticModels()
+		return Catalog{Models: codexStaticModels(), Fallback: true}, nil
 	}
 	models, err := parseCodexModelCatalog(raw)
 	if err != nil || len(models) == 0 {
-		return codexStaticModels()
+		return Catalog{Models: codexStaticModels(), Fallback: true}, nil
 	}
-	if configured := codexConfiguredModel(); configured != "" {
+	if filterConfigured {
+		configured := codexConfiguredModelAt(codexHome)
 		filtered := make([]Model, 0, 1)
 		for _, m := range models {
 			if m.ID == configured {
@@ -332,10 +337,17 @@ func discoverCodexModels(ctx context.Context, executablePath string) []Model {
 			}
 		}
 		if len(filtered) > 0 {
-			return filtered
+			return Catalog{Models: filtered}, nil
 		}
 	}
-	return models
+	return Catalog{Models: models}, nil
+}
+
+// discoverCodexModels is kept as the slice-returning helper used by the
+// existing catalog tests and callers that only need model entries.
+func discoverCodexModels(ctx context.Context, executablePath string) []Model {
+	catalog, _ := discoverCodexCatalog(ctx, executablePath, "", true)
+	return catalog.Models
 }
 
 // codexConfiguredModel reads the `model` key from the live Codex config
@@ -343,7 +355,14 @@ func discoverCodexModels(ctx context.Context, executablePath string) []Model {
 // key plus model_catalog_json; filtering the catalog to it makes the picker
 // match exactly what Codex is currently configured to run.
 func codexConfiguredModel() string {
-	home := os.Getenv("CODEX_HOME")
+	return codexConfiguredModelAt("")
+}
+
+func codexConfiguredModelAt(codexHome string) string {
+	home := strings.TrimSpace(codexHome)
+	if home == "" {
+		home = os.Getenv("CODEX_HOME")
+	}
 	if home == "" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -362,6 +381,47 @@ func codexConfiguredModel() string {
 		return ""
 	}
 	return strings.TrimSpace(cfg.Model)
+}
+
+// codexCatalogFingerprint changes when a task-local provider configuration or
+// its referenced CC Switch model catalog changes. Task workdirs can be reused
+// across runs, so the executable-path cache key alone would otherwise keep a
+// stale native/CC Switch catalog alive for the cache TTL after a switch.
+func codexCatalogFingerprint(codexHome string) string {
+	codexHome = strings.TrimSpace(codexHome)
+	if codexHome == "" {
+		return ""
+	}
+	configPath := filepath.Join(codexHome, "config.toml")
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+	hash := sha256.New()
+	_, _ = hash.Write(config)
+
+	var cfg struct {
+		ModelCatalogJSON string `toml:"model_catalog_json"`
+	}
+	if err := toml.Unmarshal(config, &cfg); err != nil {
+		return hex.EncodeToString(hash.Sum(nil))
+	}
+	ref := strings.TrimSpace(cfg.ModelCatalogJSON)
+	if ref == "" {
+		return hex.EncodeToString(hash.Sum(nil))
+	}
+	if strings.HasPrefix(ref, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			ref = filepath.Join(home, strings.TrimPrefix(ref, "~/"))
+		}
+	} else if !filepath.IsAbs(ref) {
+		ref = filepath.Join(codexHome, ref)
+	}
+	if catalog, err := os.ReadFile(ref); err == nil {
+		_, _ = hash.Write([]byte("\x00model_catalog_json\x00"))
+		_, _ = hash.Write(catalog)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 func codexSupportsDebugModels(version string) bool {
@@ -385,7 +445,14 @@ func codexSupportsDebugModels(version string) bool {
 var codexDebugModelsArgs = []string{"debug", "models"}
 
 func runCodexDebugModels(ctx context.Context, executablePath string) ([]byte, error) {
+	return runCodexDebugModelsWithHome(ctx, executablePath, "")
+}
+
+func runCodexDebugModelsWithHome(ctx context.Context, executablePath, codexHome string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, executablePath, codexDebugModelsArgs...)
+	if strings.TrimSpace(codexHome) != "" {
+		cmd.Env = replaceEnvValue(os.Environ(), "CODEX_HOME", strings.TrimSpace(codexHome))
+	}
 	hideAgentWindow(cmd)
 	return cmd.Output()
 }
@@ -670,11 +737,64 @@ func ValidateThinkingLevel(ctx context.Context, providerType, executablePath, mo
 	if model == "" && providerType == "codex" {
 		return false, nil
 	}
-	catalog, err := ListModels(ctx, providerType, executablePath)
+	var catalog Catalog
+	var err error
+	if providerType == "codex" {
+		// The UI catalog may be filtered to Codex's configured model so it
+		// mirrors the current provider selection. Validation must inspect the
+		// full catalog because an explicit agent model can differ from that
+		// selection, especially while switching native Codex and CC Switch.
+		catalog, err = ListModelsForCodexHome(ctx, executablePath, "")
+	} else {
+		catalog, err = ListModels(ctx, providerType, executablePath)
+	}
 	if err != nil {
 		return false, err
 	}
-	models := catalog.Models
+	if providerType == "codex" && catalog.Fallback && !catalogHasModel(catalog.Models, model) {
+		// A static catalog can still validate the official models it knows
+		// about. For an unknown/custom CC Switch model, however, it cannot
+		// prove that a persisted effort is accepted by the active runtime.
+		// Drop the optional effort override and let Codex use its own default;
+		// the model itself is resolved separately and remains intact.
+		return false, nil
+	}
+	return validateThinkingLevelCatalog(providerType, catalog.Models, model, value), nil
+}
+
+// ValidateThinkingLevelForCodexHome is the task-local counterpart to
+// ValidateThinkingLevel. It is used after the daemon has prepared CODEX_HOME,
+// because native Codex and CC Switch can expose different model/effort
+// catalogs on the same machine.
+func ValidateThinkingLevelForCodexHome(ctx context.Context, executablePath, codexHome, model, value string) (bool, error) {
+	if value == "" {
+		return true, nil
+	}
+	if strings.TrimSpace(model) == "" {
+		return false, nil
+	}
+	catalog, err := ListModelsForCodexHome(ctx, executablePath, codexHome)
+	if err != nil {
+		return false, err
+	}
+	if catalog.Fallback && !catalogHasModel(catalog.Models, model) {
+		// Do not inject an effort value that a fallback catalog cannot
+		// validate for a private CC Switch model.
+		return false, nil
+	}
+	return validateThinkingLevelCatalog("codex", catalog.Models, model, value), nil
+}
+
+func catalogHasModel(models []Model, model string) bool {
+	for _, candidate := range models {
+		if candidate.ID == model {
+			return true
+		}
+	}
+	return false
+}
+
+func validateThinkingLevelCatalog(providerType string, models []Model, model, value string) bool {
 	target := model
 	if target == "" {
 		// Default model = the entry the catalog marks as Default. If no
@@ -689,9 +809,9 @@ func ValidateThinkingLevel(ctx context.Context, providerType, executablePath, mo
 		}
 		if target == "" {
 			if providerType == "opencode" {
-				return anyModelSupportsThinkingValue(models, value), nil
+				return anyModelSupportsThinkingValue(models, value)
 			}
-			return false, nil
+			return false
 		}
 	}
 	for _, m := range models {
@@ -699,16 +819,16 @@ func ValidateThinkingLevel(ctx context.Context, providerType, executablePath, mo
 			continue
 		}
 		if m.Thinking == nil {
-			return false, nil
+			return false
 		}
 		for _, lvl := range m.Thinking.SupportedLevels {
 			if lvl.Value == value {
-				return true, nil
+				return true
 			}
 		}
-		return false, nil
+		return false
 	}
-	return false, nil
+	return false
 }
 
 // ValidateServiceTier reports whether value is advertised by the current
@@ -722,22 +842,58 @@ func ValidateServiceTier(ctx context.Context, providerType, executablePath, mode
 	if providerType != "codex" || model == "" {
 		return false, nil
 	}
-	catalog, err := ListModels(ctx, providerType, executablePath)
+	var catalog Catalog
+	var err error
+	if providerType == "codex" {
+		catalog, err = ListModelsForCodexHome(ctx, executablePath, "")
+	} else {
+		catalog, err = ListModels(ctx, providerType, executablePath)
+	}
 	if err != nil {
 		return false, err
 	}
-	for _, m := range catalog.Models {
+	if catalog.Fallback {
+		// Service tiers are deliberately absent from the static catalog. A
+		// discovery fallback must therefore clear the optional override for
+		// both official and private models instead of guessing.
+		return false, nil
+	}
+	return validateServiceTierCatalog(catalog.Models, model, value), nil
+}
+
+// ValidateServiceTierForCodexHome validates a Codex service tier against the
+// task-local catalog, keeping the same native/CC Switch boundary as model and
+// thinking-level resolution.
+func ValidateServiceTierForCodexHome(ctx context.Context, executablePath, codexHome, model, value string) (bool, error) {
+	if value == "" {
+		return true, nil
+	}
+	if strings.TrimSpace(model) == "" {
+		return false, nil
+	}
+	catalog, err := ListModelsForCodexHome(ctx, executablePath, codexHome)
+	if err != nil {
+		return false, err
+	}
+	if catalog.Fallback {
+		return false, nil
+	}
+	return validateServiceTierCatalog(catalog.Models, model, value), nil
+}
+
+func validateServiceTierCatalog(models []Model, model, value string) bool {
+	for _, m := range models {
 		if m.ID != model {
 			continue
 		}
 		for _, tier := range m.ServiceTiers {
 			if tier.ID == value {
-				return true, nil
+				return true
 			}
 		}
-		return false, nil
+		return false
 	}
-	return false, nil
+	return false
 }
 
 func anyModelSupportsThinkingValue(models []Model, value string) bool {

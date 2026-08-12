@@ -8,7 +8,7 @@ VERSION="$(cat "$PACKAGING/VERSION")"
 # quick-create feature gates (server/pkg/agent/version.go). The Board package
 # version is intentionally separate: it tracks the app distribution, not the
 # CLI protocol floor.
-CLI_VERSION="${MULTICA_CLI_VERSION:-0.4.19}"
+CLI_VERSION="${MULTICA_CLI_VERSION:-0.4.20}"
 ARCH="${MULTICA_BOARD_ARCH:-$(uname -m)}"
 case "$ARCH" in
   arm64) GOARCH=arm64 ;;
